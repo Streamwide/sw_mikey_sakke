@@ -1,0 +1,79 @@
+{
+    "version": 2,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 19,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "default",
+            "displayName": "Default Config",
+            "description": "Default build using Ninja generator",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BUILD_SHARED_LIBS": false,
+                "BUILD_TESTING": false
+            }
+        },
+        {
+            "name": "dev",
+            "displayName": "Development Config",
+            "description": "Default build for development",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/dev",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BUILD_SHARED_LIBS": false,
+                "BUILD_TESTING": true
+            }
+        },
+        {
+            "name": "php",
+            "displayName": "PHP lib Config",
+            "description": "Build for generating a PHP lib",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/php",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BUILD_TESTING": false,
+                "BUILD_PHPLIB": true,
+                "USE_SPDLOG": true
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "default",
+            "configurePreset": "default"
+        },
+        {
+            "name": "dev",
+            "configurePreset": "dev"
+        },
+        {
+            "name": "php",
+            "configurePreset": "php",
+            "targets": "sw_mikey_sakke_php"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "dev",
+            "configurePreset": "dev",
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
+            },
+            "filter": {
+                "include": {
+                    "name": "^test_"
+                }
+            }
+        }
+    ]
+}

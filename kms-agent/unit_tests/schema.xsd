@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xenc="http://www.w3.org/2001/04/xmlenc#" xmlns:krr="urn:3gpp:ns:mcsecKMSKRR:1.0" xmlns="urn:3gpp:ns:mcsecKMSInterface:1.0" targetNamespace="urn:3gpp:ns:mcsecKMSInterface:1.0" elementFormDefault="qualified" version="1.0">
+
+    <xsd:import namespace="http://www.w3.org/2000/09/xmldsig#" />
+    <xsd:import namespace="http://www.w3.org/2001/04/xmlenc#" />
+    <xsd:import namespace="urn:3gpp:ns:mcsecKMSKRR:1.0" />
+
+    <!-- Global elements -->
+    <xsd:element name="KmsRequest" type="KmsRequestType" />
+    <xsd:element name="SignedKmsRequest" type="SignedKmsRequestType" />
+
+    <xsd:element type="KmsResponseType" name="KmsResponse" />
+    <xsd:element type="SignedKmsResponseType" name="SignedKmsResponse" />
+
+    <!-- KMS Request Type definitions (see clause D.2.2) -->
+    <xsd:complexType name="KmsRequestType">
+        <xsd:sequence>
+            <xsd:element name="UserUri" type="xsd:anyURI" />
+            <xsd:element name="KmsUri" type="xsd:anyURI" />
+            <xsd:element name="Time" type="xsd:dateTime" />
+            <xsd:element name="ClientId" type="xsd:string" minOccurs="0" />
+            <xsd:element name="DeviceId" type="xsd:string" minOccurs="0" />
+            <xsd:element name="ClientReqUrl" type="xsd:anyURI" />
+            <xsd:element name="KrrList" type="krr:KmsRedirectResponseType" minOccurs="0"></xsd:element>
+            <xsd:element name="ClientError" type="ErrorType" minOccurs="0" />
+            <!-- Can extend in another namespace - for more types of communication-->
+            <xsd:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded" />
+        </xsd:sequence>
+        <xsd:attribute name="Id" type="xsd:string" />
+        <xsd:attribute name="Version" type="xsd:string" fixed="1.1.0" />
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+    <xsd:complexType name="SignedKmsRequestType">
+        <xsd:sequence>
+            <xsd:element name="KmsRequest" type="KmsRequestType" />
+            <xsd:element ref="ds:Signature" />
+        </xsd:sequence>
+        <xsd:attribute name="Id" type="xsd:string" />
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+    <xsd:complexType name="ErrorType">
+        <xsd:sequence>
+            <xsd:element type="xsd:integer" name="ErrorCode" maxOccurs="1" />
+            <xsd:element type="xsd:string" name="ErrorMsg" maxOccurs="1" />
+            <xsd:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded" />
+        </xsd:sequence>
+        <xsd:attribute name="Id" type="xsd:string" />
+        <xsd:attribute name="Version" type="xsd:string" />
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+    <!-- KMS Response Type definitions (see clause D.2.3) -->
+    <xsd:complexType name="KmsResponseType">
+        <xsd:sequence>
+            <xsd:element name="UserUri" type="xsd:anyURI" />
+            <xsd:element name="KmsUri" type="xsd:anyURI" />
+            <xsd:element name="Time" type="xsd:dateTime" />
+            <xsd:element name="KmsId" type="xsd:string" minOccurs="0" />
+            <xsd:element name="ClientReqUrl" type="xsd:anyURI" />
+            <xsd:element name="KmsMessage" type="KMSMessage" minOccurs="0" />
+            <xsd:element name="KmsError" type="ErrorType" minOccurs="0" />
+            <xsd:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded" />
+        </xsd:sequence>
+        <xsd:attribute name="Id" type="xsd:string" />
+        <xsd:attribute name="Version" type="xsd:string" fixed="1.0.0" />
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+
+    <xsd:complexType name="SignedKmsResponseType">
+        <xsd:sequence>
+            <xsd:element ref="KmsResponse" />
+            <xsd:element ref="ds:Signature" minOccurs="0" />
+        </xsd:sequence>
+        <xsd:attribute name="Id" type="xsd:string" />
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+    <xsd:complexType name="KMSMessage">
+        <xsd:choice>
+            <xsd:element name="KmsInit" type="KmsInitType" />
+            <xsd:element name="KmsKeyProv" type="KmsKeyProvType" />
+            <xsd:element name="KmsCertCache" type="KmsCertCacheType" />
+            <xsd:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded" />
+        </xsd:choice>
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+    <xsd:complexType name="KmsInitType">
+        <xsd:sequence>
+            <xsd:choice>
+                <xsd:element name="SignedKmsCertificate" type="SignedKmsCertificateType" />
+                <xsd:element name="KmsCertificate" type="KmsCertificateType" />
+            </xsd:choice>
+            <xsd:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded" />
+        </xsd:sequence>
+        <xsd:attribute name="Id" type="xsd:string" />
+        <xsd:attribute name="Version" type="xsd:string" />
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+    <xsd:complexType name="KmsKeyProvType">
+        <xsd:sequence>
+            <xsd:element name="KmsKeySet" type="KmsKeySetType" minOccurs="0" maxOccurs="unbounded" />
+            <xsd:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded" />
+        </xsd:sequence>
+        <xsd:attribute name="Id" type="xsd:string" />
+        <xsd:attribute name="Version" type="xsd:string" fixed="1.0.0" />
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+    <xsd:complexType name="KmsCertCacheType">
+        <xsd:sequence>
+            <xsd:element name="SignedKmsCertificate" type="SignedKmsCertificateType" minOccurs="0" maxOccurs="unbounded" />
+            <xsd:element name="KmsCertificate" type="KmsCertificateType" minOccurs="0" maxOccurs="unbounded" />
+            <xsd:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded" />
+        </xsd:sequence>
+        <xsd:attribute name="Id" type="xsd:string" />
+        <xsd:attribute name="Version" type="xsd:string" fixed="1.0.0" />
+        <xsd:attribute name="CacheNum" type="xsd:integer" />
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+    <!-- KmsCertificate definition - see clause D.3.2.2 -->
+    <xsd:element name="KmsCertificate" type="KmsCertificateType" />
+    <xsd:complexType name="KmsCertificateType">
+        <xsd:sequence>
+            <xsd:element name="CertUri" type="xsd:anyURI" minOccurs="0" />
+            <xsd:element name="KmsUri" type="xsd:anyURI" />
+            <xsd:element name="Issuer" type="xsd:string" minOccurs="0" />
+            <xsd:element name="ValidFrom" type="xsd:dateTime" minOccurs="0" />
+            <xsd:element name="ValidTo" type="xsd:dateTime" minOccurs="0" />
+            <xsd:element name="Revoked" type="xsd:boolean" minOccurs="0" />
+            <xsd:element name="UserIdFormat" type="xsd:string" />
+            <xsd:element name="UserKeyPeriod" type="xsd:integer" />
+            <xsd:element name="UserKeyOffset" type="xsd:integer" />
+            <xsd:element name="PubEncKey" type="xsd:hexBinary" />
+            <xsd:element name="PubAuthKey" type="xsd:hexBinary" />
+            <xsd:element name="ParameterSet" type="xsd:integer" minOccurs="0" />
+            <xsd:element name="KmsDomainList" minOccurs="0">
+                <xsd:complexType>
+                    <xsd:sequence>
+                        <xsd:element type="xsd:anyURI" name="KmsDomain" maxOccurs="unbounded" />
+                    </xsd:sequence>
+                </xsd:complexType>
+            </xsd:element>
+            <xsd:any namespace="##other" processContents="lax" minOccurs="0" maxOccurs="unbounded" />
+        </xsd:sequence>
+        <xsd:attribute name="Id" type="xsd:string" />
+        <xsd:attribute name="Version" type="xsd:string" />
+        <xsd:attribute name="Role" type="RoleType" />
+        <xsd:attribute name="IsSecurityGateway" type="xsd:boolean" use="optional" />
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+    <xsd:simpleType name="RoleType">
+        <xsd:restriction base="xsd:string">
+            <xsd:enumeration value="Root" />
+            <xsd:enumeration value="External" />
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:element name="SignedKmsCertificate" type="SignedKmsCertificateType" />
+    <xsd:complexType name="SignedKmsCertificateType">
+        <xsd:sequence>
+            <xsd:element name="KmsCertificate" type="KmsCertificateType" />
+            <xsd:element ref="ds:Signature" minOccurs="0" />
+        </xsd:sequence>
+        <xsd:attribute name="Id" type="xsd:string" />
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+    <xsd:element name="KmsKeySet" type="KmsKeySetType" />
+
+    <xsd:complexType name="KmsKeySetType">
+        <xsd:sequence>
+            <xsd:element name="KmsUri" type="xsd:anyURI" />
+            <xsd:element name="CertUri" type="xsd:anyURI" minOccurs="0" />
+            <xsd:element name="Issuer" type="xsd:string" minOccurs="0" />
+            <xsd:element name="UserUri" type="xsd:anyURI" />
+            <xsd:element name="UserID" type="xsd:string" />
+            <xsd:element name="ValidFrom" type="xsd:dateTime" minOccurs="0" />
+            <xsd:element name="ValidTo" type="xsd:dateTime" minOccurs="0" />
+            <xsd:element name="KeyPeriodNo" type="xsd:integer" />
+            <xsd:element name="Revoked" type="xsd:boolean" minOccurs="0" />
+            <xsd:element name="UserDecryptKey" type="abstractKeyContentType" />
+            <xsd:element name="UserSigningKeySSK" type="abstractKeyContentType" />
+            <xsd:element name="UserPubTokenPVT" type="abstractKeyContentType" />
+        </xsd:sequence>
+        <xsd:attribute name="Id" type="xsd:string" />
+        <xsd:attribute name="Version" type="xsd:string" fixed="1.1.0" />
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+    <xsd:complexType name="abstractKeyContentType" abstract="true" mixed="true" />
+
+    <xsd:complexType name="KeyContentType">
+        <xsd:simpleContent>
+            <xsd:restriction base="abstractKeyContentType">
+                <xsd:simpleType>
+                    <xsd:restriction base="xsd:hexBinary"></xsd:restriction>
+                </xsd:simpleType>
+            </xsd:restriction>
+        </xsd:simpleContent>
+    </xsd:complexType>
+
+    <xsd:complexType name="EncKeyContentTypeMixed" mixed="false" abstract="true">
+        <xsd:complexContent>
+            <xsd:restriction base="abstractKeyContentType">
+                <xsd:sequence></xsd:sequence>
+            </xsd:restriction>
+        </xsd:complexContent>
+    </xsd:complexType>
+
+    <xsd:complexType name="EncKeyContentType">
+        <xsd:complexContent>
+            <xsd:extension base="EncKeyContentTypeMixed">
+                <xsd:sequence>
+                    <xsd:element ref="xenc:EncryptedKey" />
+                </xsd:sequence>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+
+    <xsd:complexType name="KmsInitTkIkType">
+        <xsd:complexContent>
+            <xsd:extension base="KmsInitType">
+                <xsd:sequence>
+                    <xsd:element type="EncKeyContentType" name="NewTransportKey" maxOccurs="unbounded" minOccurs="0" />
+                    <xsd:element type="EncKeyContentType" name="NewIntegrityKey" maxOccurs="unbounded" minOccurs="0" />
+                </xsd:sequence>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+
+    <xsd:complexType name="KmsKeyProvTkIkType">
+        <xsd:complexContent>
+            <xsd:extension base="KmsKeyProvType">
+                <xsd:sequence>
+                    <xsd:element type="EncKeyContentType" name="NewTransportKey" maxOccurs="unbounded" minOccurs="0" />
+                    <xsd:element type="EncKeyContentType" name="NewIntegrityKey" maxOccurs="unbounded" minOccurs="0" />
+                </xsd:sequence>
+            </xsd:extension>
+        </xsd:complexContent>
+    </xsd:complexType>
+
+</xsd:schema>

@@ -1,0 +1,8 @@
+*
+!/**/
+!*.*
+*.xml
+*.cmake
+gtest/
+CMakeFiles/
+
