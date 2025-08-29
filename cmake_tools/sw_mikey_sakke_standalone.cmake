@@ -8,9 +8,6 @@ set (DIRLIBCURL            ./lib/curl)
 set (DIRLIBXMLSEC1         ./lib/xmlsec1)
 
 if(NOT TARGET OpenSSL::Crypto OR NOT TARGET OpenSSL::SSL)
-    set(OPENSSL_VERSION  "3.1.2")
-    message(STATUS "Openssl will be downloaded from github")
-
     file(GLOB ARCHIVE_OPENSSL "${CMAKE_CURRENT_SOURCE_DIR}/third_party/openssl-3.?.?.tar.gz")
     cmake_path(GET ARCHIVE_OPENSSL STEM STEM_OPENSSL)
 
@@ -29,7 +26,7 @@ if(NOT TARGET OpenSSL::Crypto OR NOT TARGET OpenSSL::SSL)
     )
     execute_process(
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${DIRLIBOPENSSL}
-        COMMAND ./Configure threads
+        COMMAND ./Configure threads no-comp
     )
     execute_process(
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${DIRLIBOPENSSL}
@@ -50,6 +47,7 @@ if(USE_SPDLOG AND NOT TARGET spdlog::spdlog)
 
     FetchContent_Declare(
         spdlog
+        EXCLUDE_FROM_ALL
         URL ${CMAKE_CURRENT_SOURCE_DIR}/third_party/spdlog-1.10.0.tar.gz
     )
     FetchContent_MakeAvailable(spdlog)
@@ -70,6 +68,7 @@ if(NOT TARGET CURL::libcurl)
 
     FetchContent_Declare(
         libcurl
+        EXCLUDE_FROM_ALL
         URL ${CMAKE_CURRENT_SOURCE_DIR}/third_party/curl-7.85.0.tar.gz
     )
     FetchContent_MakeAvailable(libcurl)
@@ -82,6 +81,7 @@ if(NOT TARGET xmlsec1-openssl OR NOT TARGET xmlsec1)
 
     FetchContent_Declare(
         xmlsec1
+        EXCLUDE_FROM_ALL
         URL             ${CMAKE_CURRENT_SOURCE_DIR}/third_party/xmlsec1-1.2.34.tar.gz
         SOURCE_DIR      ${XMLSEC_SOURCE_DIR}
         SOURCE_SUBDIR   ../build/xmlsec1
@@ -91,27 +91,26 @@ if(NOT TARGET xmlsec1-openssl OR NOT TARGET xmlsec1)
 endif()
 endif()
 
-if(NOT OPENSSL_ONLY AND NOT TARGET gmp)
-    set (DIRLIBGMP ${CMAKE_CURRENT_SOURCE_DIR}/lib/gmp)
+if(NOT OPENSSL_ONLY AND (NOT TARGET gmp OR NOT TARGET gmpxx))
+    set (DIRLIBGMP ./lib/gmp)
 
     ExternalProject_Add(libgmp
         URL ${CMAKE_CURRENT_SOURCE_DIR}/third_party/gmp-6.2.1.tar.xz
-        SOURCE_DIR ${DIRLIBGMP}
-        PREFIX build/
-        CONFIGURE_COMMAND cd ${DIRLIBGMP} &&
+        SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/${DIRLIBGMP}
+        CONFIGURE_COMMAND cd <SOURCE_DIR> &&
             ./configure --disable-shared --enable-cxx --with-pic
-        BUILD_COMMAND make -C ${DIRLIBGMP}
+        BUILD_COMMAND make -C <SOURCE_DIR>
         INSTALL_COMMAND ""
-        BUILD_BYPRODUCTS ${DIRLIBGMP}/.libs/libgmp.a ${DIRLIBGMP}/.libs/libgmpxx.a
+        BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${DIRLIBGMP}/.libs/libgmp.a ${CMAKE_CURRENT_BINARY_DIR}/${DIRLIBGMP}/.libs/libgmpxx.a
     )
 
     add_library(gmp STATIC IMPORTED)
-    set_property(TARGET gmp PROPERTY IMPORTED_LOCATION ${DIRLIBGMP}/.libs/libgmp.a)
-    set_property(TARGET gmp PROPERTY INTERFACE_INCLUDE_DIRECTORIES ${DIRLIBGMP})
+    set_property(TARGET gmp PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/${DIRLIBGMP}/.libs/libgmp.a)
+    set_property(TARGET gmp PROPERTY INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/${DIRLIBGMP})
     add_dependencies(gmp libgmp)
 
     add_library(gmpxx STATIC IMPORTED)
-    set_property(TARGET gmpxx PROPERTY IMPORTED_LOCATION ${DIRLIBGMP}/.libs/libgmpxx.a)
-    set_property(TARGET gmpxx PROPERTY INTERFACE_INCLUDE_DIRECTORIES ${DIRLIBGMP})
+    set_property(TARGET gmpxx PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_BINARY_DIR}/${DIRLIBGMP}/.libs/libgmpxx.a)
+    set_property(TARGET gmpxx PROPERTY INTERFACE_INCLUDE_DIRECTORIES ${CMAKE_CURRENT_BINARY_DIR}/${DIRLIBGMP})
     add_dependencies(gmpxx libgmp)
 endif()

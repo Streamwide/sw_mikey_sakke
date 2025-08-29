@@ -31,6 +31,7 @@ option(USE_SPDLOG       "Build with spdlog" OFF)
 option(SECURED_REQUESTS "Adds a signed XML secure request element to the HTTP requests. (Not supported yet)" OFF)
 option(OPENSSL_ONLY     "Use only Openssl for arithmetic. Will build without GMP" OFF)
 option(BUILD_PHPLIB     "Build the library with PHP bindings" OFF)
+option(ENGINE_BUILD     "Build the library for the engine" OFF)
 
 if (USE_SPDLOG)
     message(STATUS "Building with spdlog")
@@ -55,8 +56,8 @@ endif()
 message(STATUS "LibXml2 include dir: ${LIBXML2_INCLUDE_DIR}")
 message(STATUS "LibXml2 libraries: ${LIBXML2_LIBRARIES}")
 
-if(OPENSSL_ROOT_DIR)
-    find_package(OpenSSL 1.1.1 REQUIRED)
+if(OPENSSL_ROOT_DIR OR NOT TARGET OpenSSL::Crypto OR NOT TARGET OpenSSL::SSL)
+    find_package(OpenSSL)
 endif()
 
 if(TARGET OpenSSL::SSL OR TARGET OpenSSL::Crypto)
@@ -71,7 +72,11 @@ if(USE_SPDLOG)
 endif()
 
 if(NOT TARGET CURL::libcurl)
-    message(STATUS "curl will be compiled from third_party")
+    if(ENGINE_BUILD)
+        find_package(CURL)
+    else()
+        message(STATUS "curl will be compiled from third_party")
+    endif()
 else()
     message(STATUS "curl include dir: ${CURL_INCLUDE_DIR}")
     message(STATUS "curl libraries: ${CURL_LIBRARIES}")
@@ -151,7 +156,7 @@ else()
     )
 endif()
 
-add_library(${CMAKE_PROJECT_NAME}
+add_library(${PROJECT_NAME}
     ${libmcrypto_source_files}
     ${libmcrypto_openssl_source_files}
     ${libmikey_source_files}
@@ -166,6 +171,14 @@ if(NOT SECURED_REQUESTS)
         sw_mikey_sakke
         PRIVATE
         NO_XMLSEC=1
+    )
+endif()
+
+if(OPENSSL_ONLY)
+    target_compile_definitions(
+        sw_mikey_sakke
+        PRIVATE
+        OPENSSL_ONLY
     )
 endif()
 
@@ -186,7 +199,11 @@ target_include_directories(
     ${OPENSSL_INCLUDE_DIR}
 )
 
-target_compile_options(sw_mikey_sakke PRIVATE -Wall -Werror -Wextra)
+target_compile_options(sw_mikey_sakke
+    PRIVATE
+    -Wall -Werror -Wextra
+    -Wno-shorten-64-to-32
+)
 
 set_target_properties(
     sw_mikey_sakke
@@ -196,7 +213,7 @@ set_target_properties(
 
 target_link_libraries(sw_mikey_sakke PRIVATE stdc++)
 if(NOT OPENSSL_ONLY)
-    target_link_libraries(sw_mikey_sakke PRIVATE gmp)
+    target_link_libraries(sw_mikey_sakke PRIVATE gmp gmpxx)
 endif()
 
 if(SECURED_REQUESTS)
@@ -210,9 +227,6 @@ endif()
 target_link_libraries(sw_mikey_sakke PRIVATE CURL::libcurl)
 target_link_libraries(sw_mikey_sakke PRIVATE LibXml2::LibXml2)
 target_link_libraries(sw_mikey_sakke PRIVATE OpenSSL::SSL OpenSSL::Crypto)
-
-install(TARGETS     sw_mikey_sakke                                  DESTINATION lib)
-install(DIRECTORY   ${PROJECT_SOURCE_DIR}/libmikey-sakke/include/   DESTINATION include)
 
 include(cmake_tools/versions.cmake)
 
