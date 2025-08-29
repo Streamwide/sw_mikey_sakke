@@ -36,25 +36,26 @@ foreach(file ${files})
         PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
     )
 
-    target_include_directories(
-        ${file_exe}
-        PRIVATE
-        ${CMAKE_SOURCE_DIR}/${DIRLIBMIKEY}/include
-        ${CMAKE_SOURCE_DIR}/${DIRLIBMUTIL}/include
-        ${CMAKE_SOURCE_DIR}/${DIRLIBMCRYPTO}/include
-        ${CMAKE_SOURCE_DIR}/${DIRLIBKMSAGENT}/include
-        ${LIBXML2_INCLUDE_DIR}
-    )
-
     target_compile_options(${file_exe} PRIVATE -g -fstack-protector -fPIC)
 
     target_link_libraries(${file_exe} PRIVATE GTest::gtest_main)
     target_link_libraries(${file_exe} PRIVATE sw_mikey_sakke)
 
-    gtest_discover_tests(
-        ${file_exe}
-        EXTRA_ARGS --gtest_output=xml:${file_exe}.xml
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/unit_tests
+    add_test(
+        NAME ${file_exe}
+        COMMAND ${file_exe} --gtest_output=xml:${file_exe}.xml
+    )
+    set_tests_properties(${file_exe} PROPERTIES
+        LABELS sw_mikey_sakke
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/
     )
 
+    target_compile_options(${file_exe} PRIVATE
+        -fsanitize=address
+        -fno-omit-frame-pointer
+    )
+
+    set_target_properties(${file_exe} PROPERTIES
+        LINK_FLAGS  -fsanitize=address
+    )
 endforeach()

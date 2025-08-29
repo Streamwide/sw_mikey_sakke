@@ -103,12 +103,14 @@ void mikey_sakke_log_printf(mikey_sakke_log_level_e log_level, const char* filen
 
     /* Allocate a buffer and write into it */
     va_start(org, format);
-    char buffer[size];
-    vsnprintf(buffer, sizeof(buffer), format, org);
+    char *buffer = (char*)calloc(1, size);
+    vsnprintf(buffer, size, format, org);
     va_end(org);
 
     // TODO add thread id and name to the log
     mikey_sakke_log_config.log_function(log_level, filename, line, function, NULL, 0, buffer);
+
+    free(buffer);
 }
 
 void mikey_sakke_log_print(mikey_sakke_log_level_e log_level, const char* filename, unsigned line, const char* function, const char* log) {

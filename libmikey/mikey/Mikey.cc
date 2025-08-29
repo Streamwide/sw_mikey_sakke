@@ -36,6 +36,7 @@
 #include <libmikey/KeyAgreementSAKKE.h>
 #include <libmikey/MikeyException.h>
 #include <libmikey/MikeyMessage.h>
+#include <libmikey/MikeyPayloadHDR.h>
 
 #ifdef _WIN32_WCE
 #include "../include/minisip_wce_extra_includes.h"
@@ -54,8 +55,45 @@ using namespace std;
 IMikeyConfig::~IMikeyConfig() = default;
 
 Mikey::Mikey(MRef<IMikeyConfig*> aConfig):  config(aConfig) {}
+Mikey::Mikey(): config(nullptr) {}
 
 Mikey::~Mikey() = default;
+
+//DEBUG RBY
+bool Mikey::getClearInfo(const string& message, mikey_clear_info_t& info) {
+    bool ret = false;
+
+    if (message.substr(0, 6) == "mikey ") {
+        string b64Message = message.substr(6, message.length() - 6);
+
+        if (message == "")
+            throw MikeyException("No MIKEY message received");
+        else {
+            try {
+                MRef<MikeyMessage*> init_mes = MikeyMessage::parse(b64Message);
+
+                /*  In the future: Re-used the KeyAgreementSAKKE::authenticate() method
+                    with a "no key provided" method
+                ka->setInitiatorData(init_mes);
+                if (init_mes->authenticate(*ka)) {
+                    string msg = "Authentication of the MIKEY init message failed: " + ka->authError();
+                    throw MikeyExceptionAuthentication(msg.c_str());
+                }*/
+                MRef<MikeyPayload*> hdrpl = init_mes->extractPayload(MIKEYPAYLOAD_HDR_PAYLOAD_TYPE);
+                auto*               hdr   = static_cast<MikeyPayloadHDR*>(*hdrpl);
+                info.key_id = hdr->csbId();
+
+                ret = true;
+            } catch (MikeyException& exc) {
+                MIKEY_SAKKE_LOGE("MikeyException caught: %s", exc.what());
+                setState(STATE_ERROR);
+            }
+        }
+    } else {
+        MIKEY_SAKKE_LOGE("Unknown type of key agreement");
+    }
+    return ret;
+}
 
 bool Mikey::responderAuthenticate(const string& message, const string& peerUri, const OctetString& peerId) {
 

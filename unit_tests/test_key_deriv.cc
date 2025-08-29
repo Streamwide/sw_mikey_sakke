@@ -3,6 +3,9 @@
 #include <array>
 #include <libmikey/KeyAgreement.h>
 #include <mikeysakkelog4c.h>
+#include <mikeysakke4c.h>
+#include <util/octet-string.h>
+#include <mscrypto/sakke.h>
 
 TEST(test_key_deriv, encr_and_salt) {
     MIKEY_SAKKE_LOG_SET_LEVEL("debug");
@@ -48,4 +51,41 @@ TEST(test_key_deriv, tek_and_salt) {
     static constexpr uint8_t expected_key_salt[] = {0x59, 0xAA, 0xA4, 0x9E, 0xBB, 0x54, 0x81, 0x36, 0x02, 0xB7, 0xCC, 0x16, 0x59, 0x61,
                                              0xB4, 0xE8, 0x74, 0x5E, 0xB4, 0xDF, 0x7D, 0x15, 0x5C, 0x47, 0x31, 0x14, 0xA7, 0x99};
     ASSERT_FALSE(!!memcmp(key, expected_key_salt, tek_len + salt_len));
+}
+
+void test_id(uint32_t key_type) {
+    uint8_t* keyId = mikey_sakke_gen_key_id(key_type);
+    uint32_t test;
+    std::memcpy(&test, keyId, sizeof(test));
+    uint32_t ret = (keyId[0] & 0xF0) >> 4;//KeyAgreement::extractPurposeTag(test);
+
+    ASSERT_EQ(key_type, ret);
+
+    auto keyId_os = OctetString {4, keyId};
+    uint8_t key_raw[] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16};
+    auto key_os = OctetString {16, key_raw};
+    auto peerUri = OctetString {5, (uint8_t*) "myuri"};
+    std::vector<uint8_t> ret_v = MikeySakkeCrypto::GenerateGukId(peerUri, key_os, keyId_os);
+    std::memcpy(&test, ret_v.data(), sizeof(test));
+    ret = (ret_v.data()[0] & 0xF0) >> 4;//KeyAgreement::extractPurposeTag(test);
+    ASSERT_EQ(key_type, ret);
+    free(keyId);
+};
+
+TEST(test_key_deriv, key_type_gmk) {
+    MIKEY_SAKKE_LOG_SET_LEVEL("debug");
+
+    test_id(GMK);
+}
+
+TEST(test_key_deriv, key_type_pck) {
+    MIKEY_SAKKE_LOG_SET_LEVEL("debug");
+
+    test_id(PCK);
+}
+
+TEST(test_key_deriv, key_type_csk) {
+    MIKEY_SAKKE_LOG_SET_LEVEL("debug");
+
+    test_id(CSK);
 }

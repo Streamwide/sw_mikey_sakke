@@ -38,14 +38,21 @@ class bigint_ssl {
     bigint_ssl(): bn(BN_new()), owned(true) {}
     bigint_ssl(bigint_ssl const& other): bn(BN_dup(other.bn)), owned(true) {}
     bigint_ssl(char const* text, int radix, bool stripws = true): bn(nullptr), owned(true) {
+        if (radix != 16 && radix != 10) {
+            throw std::invalid_argument("bigint_ssl text constructor supports only hex(16) and dec(10) radices.");
+        }
+
         // since bigint {aka mpz_class}'s text constructor skips
         // whitespace by default, this does the same.
         //
+        char* tmp = NULL;
         if (stripws) {
-            char        nows[std::strlen(text) + 1];
-            char const* t = text;
-            char*       o = nows;
-            for (; *t != 0; ++t)
+            tmp = (char*)calloc(1, std::strlen(text) + 1);
+            if (!tmp) {
+                throw std::runtime_error("Could not allocate enough memory");
+            }
+            char* o = tmp;
+            for (char const* t = text; *t != 0; ++t) {
                 switch (*t) {
                     case '\t':
                     case '\n':
@@ -55,21 +62,17 @@ class bigint_ssl {
                     default:
                         *o++ = *t;
                 }
-            *o = 0;
-            if (radix == 16)
-                BN_hex2bn(&bn, nows);
-            else if (radix == 10)
-                BN_dec2bn(&bn, nows);
-            else
-                throw std::invalid_argument("bigint_ssl text constructor supports only hex(16) and dec(10) radices.");
-            return;
+            }
+            text = tmp;
         }
-        if (radix == 16)
+        if (radix == 16){
             BN_hex2bn(&bn, text);
-        else if (radix == 10)
+        } else if (radix == 10){
             BN_dec2bn(&bn, text);
-        else
-            throw std::invalid_argument("bigint_ssl text constructor supports only hex(16) and dec(10) radices.");
+        }
+        if (tmp) {
+            free(tmp);
+        }
     }
     bigint_ssl(long value): bn(BN_new()), owned(true) {
         if (value < 0) {

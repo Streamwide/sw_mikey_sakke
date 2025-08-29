@@ -77,9 +77,12 @@ bigint& to_bigint(bigint& out, BIGNUM const* in) {
 
     // ... if word sizes differ go via octet representation (slower)
     //
-    uint8_t octets[BN_num_bytes(in)];
-    BN_bn2bin(in, octets);
-    mpz_import(out.get_mpz_t(), sizeof octets, 1, 1, 1, 0, octets);
+    uint8_t* octets = (uint8_t*)calloc(1, BN_num_bytes(in));
+    if (octets) {
+        BN_bn2bin(in, octets);
+        mpz_import(out.get_mpz_t(), sizeof octets, 1, 1, 1, 0, octets);
+        free(octets);
+    }
 
     // XXX: erase 'octets' securely?  Maybe pass user param.
     return out;
@@ -119,9 +122,12 @@ BIGNUM* to_BIGNUM(BIGNUM* out, bigint const& in) {
     // ... if word sizes differ go via octet representation (slower)
     //
     size_t  octet_count = (bits(in) + 7) >> 3;
-    uint8_t octets[octet_count];
-    mpz_export(octets, nullptr, 1, 1, 1, 0, in.get_mpz_t());
-    BN_bin2bn(octets, octet_count, out);
+    uint8_t* octets = (uint8_t*)calloc(1, octet_count);
+    if (octets) {
+        mpz_export(octets, nullptr, 1, 1, 1, 0, in.get_mpz_t());
+        BN_bin2bn(octets, octet_count, out);
+        free(octets);
+    }
 
     // XXX: erase 'octets' securely?  Maybe pass user param.
     return out;

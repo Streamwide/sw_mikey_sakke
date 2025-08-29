@@ -33,6 +33,12 @@
 
 #include <mskms/client-fwd.h>
 
+typedef struct mikey_clear_info
+{
+  uint32_t  key_id;
+} mikey_clear_info_t;
+
+
 class LIBMIKEY_API IMikeyConfig : public virtual MObject {
   public:
     ~IMikeyConfig() override;
@@ -56,10 +62,12 @@ class LIBMIKEY_API Mikey : public MObject {
     typedef std::vector<uint32_t> Streams;
 
     explicit Mikey(MRef<IMikeyConfig*> config);
+    explicit Mikey();
     ~Mikey() override;
 
     /* Key management handling */
     // Initiator methods
+    bool getClearInfo(const std::string& message, mikey_clear_info_t& ret);
     std::string initiatorCreate(int kaType, const std::string& peerUri = "", struct key_agreement_params* params = nullptr);
     bool        initiatorAuthenticate(std::string message);
     std::string initiatorParse();

@@ -64,6 +64,8 @@ if(TARGET OpenSSL::SSL OR TARGET OpenSSL::Crypto)
     message(STATUS "Building with OpenSSL version ${OPENSSL_VERSION}")
     message(STATUS "OpenSSL include dir: ${OPENSSL_INCLUDE_DIR}")
     message(STATUS "OpenSSL libraries: ${OPENSSL_LIBRARIES}")
+else()
+    message(STATUS "Can't find OpenSSL lib" ${OPENSSL_VERSION})
 endif()
 
 if(USE_SPDLOG)
@@ -190,12 +192,13 @@ target_include_directories(
 
 target_include_directories(
     sw_mikey_sakke
-    PRIVATE
+    PUBLIC
+    ${DIRLIBMCRYPTO}/include
     ${DIRLIBMIKEY}/include
     ${DIRLIBMUTIL}/include
-    ${DIRLIBMCRYPTO}/include
     ${DIRLIBKMSAGENT}/include
     ${LIBXML2_INCLUDE_DIR} #FindXml2 does not add the includes to the xml2 target
+    PRIVATE
     ${OPENSSL_INCLUDE_DIR}
 )
 

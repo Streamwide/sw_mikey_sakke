@@ -619,49 +619,15 @@ OctetString ExtractSharedSecret(OctetString const& SED, const OctetString& ident
 }
 
 std::vector<uint8_t> GenerateGukIdSalt(OctetString peerUri, OctetString const& GMK) {
-    // TS33.179 : Figure 7.3.1-3: Generating the GUK-ID (p31)
-    // Part 1 - Generate User Salt
-    // Use KDF specified in annex B of 3GPP TS 33.220
-    // With the following imposed parameters (3GPP TS33.179 §F.1.3)
-    //  FC = 0x50.
-    //  P0 = MC Service user ID. (URI)
-    //  L0 = length of above
-    static constexpr uint8_t FC = 0x50;
-    OctetString              P0 = peerUri;
+    std::vector<uint8_t> dppk = GenericKdf(0x50, peerUri, GMK);
 
-    // Encoding of Non-Negative Integer is specified in 3GPP TS33 220 Annex B.2.1.3
-    // k should be in range [0, 65535]
-    if (peerUri.size() > 65535) {
-        return std::vector<uint8_t> {};
-    }
-
-    uint16_t L0 = peerUri.size();
-
-    OctetString S;
-    S.concat(FC);
-    S.concat(P0);
-    S.concat((uint8_t)L0 >> 8);
-    S.concat((uint8_t)L0 & 0xFF);
-
-    // The salt is equal to HMAC-SHA-256(Key, S)
-    // With Key = GMK according to TS 33.179 §7.3.1
-    static constexpr int maxOutPutSize = EVP_MAX_MD_SIZE;
-    unsigned int         outputSize    = 0;
-    uint8_t              output[maxOutPutSize];
-    memset(output, 0, maxOutPutSize);
-
-    HMAC(EVP_sha256(), GMK.raw(), GMK.size(), S.raw(), S.size(), output, &outputSize);
-
-    // The 28 least significant bits of the 256 bits of the KDF output shall be used as the User Salt.
+    // The 28 least significant bits of the 256/128 bits of the KDF output shall be used as the User Salt.
     // TS 33.179 §F.1.3
     // Get last 4 bytes of the output
-    std::vector<uint8_t> salt;
-    salt.reserve(4);
-    for (unsigned i = outputSize - 4; i < outputSize; ++i) {
-        salt.push_back(output[i]);
-    }
+    std::vector<uint8_t> salt(dppk.end() - std::min<int>(dppk.size(), 4), dppk.end());
     // Remove 4 upper bits
     salt[0] = salt[0] & 0x0F;
+
     return salt;
 }
 
@@ -718,6 +684,68 @@ OctetString ExtractGmkId(OctetString gukId, OctetString peerUri, OctetString con
     gmkId.raw()[0] = gmkId.raw()[0] | purpose_tag;
 
     return gmkId;
+}
+
+std::vector<uint8_t> GenericKdf(const uint8_t FC, OctetString const& P0, OctetString const& key) {
+    // Use KDF specified in annex B of 3GPP TS 33.220
+    // With the following imposed parameters (3GPP TS33.179 §F.1.3)
+    //  FC = 0xaa for DPPK, 0x50 for GukID-salt
+    //  P0 = refer to TS (depend of the type of output)
+    //  L0 = length of above
+
+    // Encoding of Non-Negative Integer is specified in 3GPP TS33 220 Annex B.2.1.3
+    // k should be in range [0, 65535]
+    if (P0.size() > 65535) {
+        return std::vector<uint8_t> {};
+    }
+
+    uint16_t L0 = P0.size();
+
+    OctetString S;
+    S.concat(FC);
+    S.concat(P0);
+    S.concat((uint8_t)L0 >> 8);
+    S.concat((uint8_t)L0 & 0xFF);
+
+    // The output of KDF is equal to HMAC-SHA-256(Key, S)
+    static constexpr int maxOutPutSize = EVP_MAX_MD_SIZE;
+    unsigned int         outputSize    = 0;
+    uint8_t              output[maxOutPutSize];
+    memset(output, 0, maxOutPutSize);
+
+    HMAC(EVP_sha256(), key.raw(), key.size(), S.raw(), S.size(), output, &outputSize);
+    std::vector<uint8_t> ret;
+
+    // If the initial keysize was only 128 bits, then the output is to be limited to
+    // the least significant 128 bits
+    ret.reserve(key.size());
+    uint8_t offset = 0;
+    if (key.size() != outputSize) {
+        offset = outputSize-key.size();
+    }
+    std::copy(std::begin(output)+offset, std::begin(output)+outputSize, std::back_inserter(ret));
+
+    return ret;
+}
+
+std::vector<uint8_t> DerivateDppkToDpck(OctetString const& dppkId, OctetString const& DPPK) {
+    // TS33.180 : §8.5.3
+    // Part 1 - Generate a DPCK (MCData Payload Cipher Key)
+    // Info (See §8.3): For 1to1 MCData, DPPK (MCData Payload Protection Key) is the PCK (Private Call Key)
+    // Info (See §8.4): For Groups MCData, DPPK is the GMK (Group Master Key)
+    // Use KDF specified in annex B of 3GPP TS 33.220
+    // With the following imposed parameters (3GPP TS33.179 §F.1.3)
+    //  FC = 0xaa.
+    //  P0 = DPPK-ID
+    //  L0 = length of above
+
+    // Encoding of Non-Negative Integer is specified in 3GPP TS33 220 Annex B.2.1.3
+    // k should be in range [0, 65535]
+    if (dppkId.size() > 65535) {
+        return std::vector<uint8_t> {};
+    }
+
+    return GenericKdf(0xaa, dppkId, DPPK);
 }
 
 } // namespace MikeySakkeCrypto

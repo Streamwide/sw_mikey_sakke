@@ -50,6 +50,9 @@ std::vector<uint8_t> GenerateGukId(OctetString peerUri, const OctetString& gmk, 
 
 OctetString ExtractGmkId(OctetString gukId, OctetString peerUri, OctetString const& key);
 
+std::vector<uint8_t> GenericKdf(const uint8_t FC, OctetString const& P0, OctetString const& key);
+std::vector<uint8_t> DerivateDppkToDpck(OctetString const& dppkId, OctetString const& DPPK);
+
 } // namespace MikeySakkeCrypto
 
 #endif // MSCRYPTO_SAKKE_H

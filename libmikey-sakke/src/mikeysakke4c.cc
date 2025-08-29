@@ -93,27 +93,36 @@ char* kms_key_material_init_get_user_id_format(struct kms_key_material_init* ini
         return nullptr;
     }
     int  n = snprintf(nullptr, 0, "%u", init->user_id_format);
-    char buf[n + 1];
+    char* buf = (char*)calloc(1, n + 1);
+    if (!buf) {
+        return nullptr;
+    }
     snprintf(buf, n + 1, "%u", init->user_id_format);
-    return strdup(buf);
+    return buf;
 }
 char* kms_key_material_init_get_user_key_period(struct kms_key_material_init* init) {
     if (!init) {
         return nullptr;
     }
     int  n = snprintf(nullptr, 0, "%u", init->user_key_period);
-    char buf[n + 1];
+    char* buf = (char*)calloc(1, n + 1);
+    if (!buf) {
+        return nullptr;
+    }
     snprintf(buf, n + 1, "%u", init->user_key_period);
-    return strdup(buf);
+    return buf;
 }
 char* kms_key_material_init_get_user_key_offset(struct kms_key_material_init* init) {
     if (!init) {
         return nullptr;
     }
     int  n = snprintf(nullptr, 0, "%u", init->user_key_offset);
-    char buf[n + 1];
+    char* buf = (char*)calloc(1, n + 1);
+    if (!buf) {
+        return nullptr;
+    }
     snprintf(buf, n + 1, "%u", init->user_key_offset);
-    return strdup(buf);
+    return buf;
 }
 
 struct kms_key_material_key_prov* kms_key_material_key_prov_create() {
@@ -160,9 +169,12 @@ char* kms_key_material_key_prov_get_key_period_no(struct kms_key_material_key_pr
         return nullptr;
     }
     int  n = snprintf(nullptr, 0, "%u", key_prov->key_period_no);
-    char buf[n + 1];
+    char* buf = (char*)calloc(1, n + 1);
+    if (!buf) {
+        return nullptr;
+    }
     snprintf(buf, n + 1, "%u", key_prov->key_period_no);
-    return strdup(buf);
+    return buf;
 }
 char* kms_key_material_key_prov_get_rsk(struct kms_key_material_key_prov* key_prov) {
     if (key_prov) {
@@ -759,7 +771,7 @@ char* mikey_sakke_get_mikey_rand_b64(mikey_sakke_call_t* call, unsigned int* out
     return strdup(rand_b64.c_str());
 }
 
-struct mikey_sakke_key_data* mikey_sakke_get_key_data(mikey_sakke_call_t* call, int key_type) {
+struct mikey_sakke_key_data* mikey_sakke_get_key_data(mikey_sakke_call_t* call) {
     if (call == nullptr) {
         MIKEY_SAKKE_LOGE("Invalid Call");
         return nullptr;
@@ -775,6 +787,7 @@ struct mikey_sakke_key_data* mikey_sakke_get_key_data(mikey_sakke_call_t* call, 
     const size_t   rand_len = from_c(call)->getKeyAgreement()->randLength();
     const uint8_t* rand     = from_c(call)->getKeyAgreement()->rand();
     const uint32_t csb_id   = from_c(call)->getKeyAgreement()->csbId();
+    const int      key_type = ((csb_id>>24) & 0xF0) >> 4;
 
     ret->rand   = (uint8_t*)malloc(rand_len * sizeof(uint8_t));
     ret->key_id = (uint8_t*)malloc(MIKEY_SAKKE_DEFAULT_KEY_ID_SIZE * sizeof(uint8_t));
@@ -793,6 +806,13 @@ struct mikey_sakke_key_data* mikey_sakke_get_key_data(mikey_sakke_call_t* call, 
             key_id        = from_c(call)->getKeyAgreement()->kfcId();
             ret->key      = (uint8_t*)malloc(ret->key_size * sizeof(uint8_t));
             memcpy(ret->key, from_c(call)->getKeyAgreement()->kfc(), ret->key_size);
+            break;
+        case PCK:
+            MIKEY_SAKKE_LOGI("Retrieve PCK-Data from key agreement");
+            ret->key_size = from_c(call)->getKeyAgreement()->tgkLength();
+            key_id        = from_c(call)->getKeyAgreement()->tgkId();
+            ret->key      = (uint8_t*)malloc(ret->key_size * sizeof(uint8_t));
+            memcpy(ret->key, from_c(call)->getKeyAgreement()->tgk(), ret->key_size);
             break;
         default:
             MIKEY_SAKKE_LOGE("Unsupported key type");
@@ -819,6 +839,17 @@ struct mikey_sakke_key_data* mikey_sakke_get_key_data(mikey_sakke_call_t* call, 
     MIKEY_SAKKE_LOGD("Successfully retrieved key data");
 
     return ret;
+}
+
+/* Use to derivate a DPCK key (used to encrypt messaging/MCData ciphering) from a DPPK (can be a PCK or a GMK)
+** WARNING: "dpck" must be pre-allocated with a size of "dppk_len"
+*/
+void mikey_sakke_deriv_dppk_to_dpck(uint8_t* dppk_id, uint8_t* dppk, uint32_t dppk_len, uint8_t* dpck) {
+    //MIKEY_SAKKE_LOGD("Derivation dppk to dpck, pointer_id: %d -- pointer_key: %p, len_key: %d", dppk_id, dppk, dppk_len);
+    OctetString os_dppk_id {MIKEY_SAKKE_DEFAULT_KEY_ID_SIZE, dppk_id};
+    OctetString os_dppk {dppk_len, dppk};
+    std::vector<uint8_t> ret = MikeySakkeCrypto::DerivateDppkToDpck(os_dppk_id, os_dppk);
+    memcpy(dpck, ret.data(), ret.size());
 }
 
 void mikey_sakke_gen_tek(mikey_sakke_call_t* call, uint8_t csid, uint8_t* tek, size_t tek_len) {
@@ -959,4 +990,28 @@ bool mikey_sakke_is_keyprov_expired(struct kms_key_material_init* init, struct k
     key_validity_limit = (keyprov->key_period_no + 1) * init->user_key_period - init->user_key_offset;
 
     return now >= key_validity_limit;
+}
+
+/* Warning: the KEY-ID (which is stored in CSB-ID of the HEADER_PAYLOAD) is only store in clear text
+            for the PCK & CSK. Regarding the GMK, the CSB-ID is used to stored the GUK-ID (see 
+            end point diversity section in TS-33.180)
+*/
+bool mikey_sakke_key_id_from_imessage(mikey_sakke_key_id_t* key_id_to_fill, mikey_key_mgmt_string_t* input) {
+    /* TODO RBY + ERROR CATCHING*/
+    mikey_clear_info_t  ret;
+
+
+    //input = input;
+    key_id_to_fill->key_id_size = 4;
+    key_id_to_fill->key_id = (uint8_t*)malloc(key_id_to_fill->key_id_size*sizeof(*key_id_to_fill->key_id));
+    Mikey mikey;
+
+    mikey.getClearInfo(from_key_mgmt_string(*input), ret);
+    *(key_id_to_fill->key_id) = ret.key_id;
+    key_id_to_fill->key_id[0] = ret.key_id >> 24;
+    key_id_to_fill->key_id[1] = (ret.key_id & 0xFF0000) >> 16;
+    key_id_to_fill->key_id[2] = (ret.key_id & 0xFF00) >> 8;
+    key_id_to_fill->key_id[3] = (ret.key_id & 0xFF);
+
+    return true;
 }

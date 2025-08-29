@@ -85,6 +85,12 @@ struct mikey_sakke_key_data {
     size_t   csb_id_size;
 };
 
+struct mikey_sakke_key_id {
+    uint8_t* key_id;
+    size_t   key_id_size;
+};
+typedef struct mikey_sakke_key_id      mikey_sakke_key_id_t;
+
 struct mikey_sakke_key_data* mikey_sakke_key_data_create();
 void                         mikey_sakke_key_data_destroy(struct mikey_sakke_key_data* data);
 
@@ -266,7 +272,8 @@ bool mikey_sakke_call_is_secured(mikey_sakke_call_t*);
 uint8_t                      mikey_sakke_get_csid_for_stream(mikey_sakke_call_t*, uint32_t ssrc);
 uint8_t*                     mikey_sakke_get_mikey_rand(mikey_sakke_call_t* call, unsigned int* length);
 char*                        mikey_sakke_get_mikey_rand_b64(mikey_sakke_call_t* call, unsigned int* output_length);
-struct mikey_sakke_key_data* mikey_sakke_get_key_data(mikey_sakke_call_t* call, int key_type);
+struct mikey_sakke_key_data* mikey_sakke_get_key_data(mikey_sakke_call_t* call);
+void                         mikey_sakke_deriv_dppk_to_dpck(uint8_t* dppk_id, uint8_t* dppk, uint32_t dppk_len, uint8_t* dpck);
 void                         mikey_sakke_gen_tek(mikey_sakke_call_t*, uint8_t csid, uint8_t* tek, size_t tek_len);
 void                         mikey_sakke_gen_salt(mikey_sakke_call_t*, uint8_t csid, uint8_t* salt, size_t salt_len);
 void mikey_sakke_gen_tek2(uint8_t cs_id, uint8_t* csb_id, uint8_t* key, size_t key_len, uint8_t* master_key_out, size_t master_key_len,
@@ -343,6 +350,7 @@ void mikey_sakke_set_log_func(mikey_sakke_log_func_t* func);
 #endif // USE_SPDLOG
 
 bool mikey_sakke_is_keyprov_expired(struct kms_key_material_init* init, struct kms_key_material_key_prov* keyprov);
+bool mikey_sakke_key_id_from_imessage(mikey_sakke_key_id_t* key_id_to_fill, mikey_key_mgmt_string_t* imessage);
 
 #if __cplusplus
 }

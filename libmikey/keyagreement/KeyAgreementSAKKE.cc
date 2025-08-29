@@ -264,9 +264,11 @@ class MikeyPayloadSAKKE : public MikeyPayload {
 
         GenerateSharedSecretAndSED(SED, peerId, peerCommunity, keyStore, key);
 
-        if (key_type == GMK) {
+        if (key_type == GMK || key_type == PCK) {
+            // TGK = Traffic Generating Key (that's why PCK needs to be set as Tgk, even though it is stored in same place)
             ka->setTgk(key.raw(), key.size());
         } else if (key_type == CSK) {
+            // KFC = Key For Control signaling
             ka->setKfc(key.raw(), key.size());
         }
         MIKEY_SAKKE_LOGI("Created Sakke payload with SED = %s", SED.translate().c_str());
@@ -378,7 +380,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
                 ka->setCsbId(csbId);
                 MIKEY_SAKKE_LOGI("Setting CsbID = GUK-ID = %u", csbId);
             }
-        } else if (params && params->key_type == CSK) {
+        } else if (params && (params->key_type == CSK || params->key_type == PCK)) {
             csbId |= params->key_id[0] << 24;
             csbId |= (params->key_id[1] << 16) & 0xFF0000;
             csbId |= (params->key_id[2] << 8) & 0xFF00;
@@ -456,7 +458,16 @@ class MikeyMessageSAKKE : public MikeyMessage {
                                                              keyParamPayload));
                 delete[] keyParamPayload;
             } else if (params->key_type == CSK) {
+                // TODO-RBY: Why the CSK does have a special General Extensions ? Does the TS plan that ?
                 auto     keyParam = KeyParametersPayload(KeyParametersPayload::KeyType::CSK, KeyParametersPayload::NOT_REVOKED, 0, 0, "");
+                uint8_t* keyParamPayload = keyParam.bytes();
+                addPayload(new MikeyPayloadGeneralExtensions(MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE_KEY_PARAMETERS, keyParam.length(),
+                                                             keyParamPayload));
+                delete[] keyParamPayload;
+            } else if (params->key_type == PCK) {
+                // TODO-RBY: added for debug purpose (parsing of I_MESSAGE fail on key_size retrieval if not present), but TS does not say
+                // we need it
+                auto     keyParam = KeyParametersPayload(KeyParametersPayload::KeyType::PCK, KeyParametersPayload::NOT_REVOKED, 0, 0, "");
                 uint8_t* keyParamPayload = keyParam.bytes();
                 addPayload(new MikeyPayloadGeneralExtensions(MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE_KEY_PARAMETERS, keyParam.length(),
                                                              keyParamPayload));
@@ -644,6 +655,8 @@ class MikeyMessageSAKKE : public MikeyMessage {
                 } else if (type == KeyParametersPayload::KeyType::CSK) {
                     [[maybe_unused]] uint32_t kfc_id = csbId();
                     ka->setKfcId(csbId());
+                } else if (type == KeyParametersPayload::KeyType::PCK) {
+                    ka->setTgkId(csbId());
                 }
             }
 
@@ -656,7 +669,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
             return true;
         }
 
-        if (type == KeyParametersPayload::KeyType::GMK) {
+        if (type == KeyParametersPayload::KeyType::GMK || type == KeyParametersPayload::KeyType::PCK) {
             ka->setTgk(SSV.raw(), SSV.size());
         } else if (type == KeyParametersPayload::KeyType::CSK) {
             ka->setKfc(SSV.raw(), SSV.size());

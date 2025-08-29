@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cctype>
 #include <libmutil/Logger.h>
+#include <libxml/parser.h>
 
 namespace sw_kms_response_parser {
 
