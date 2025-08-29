@@ -60,6 +60,41 @@ Mikey::Mikey(): config(nullptr) {}
 Mikey::~Mikey() = default;
 
 //DEBUG RBY
+//DEBUG RBY
+bool Mikey::displayIMessageInfo(const string& message) {
+    bool ret = false;
+
+    if (message.substr(0, 6) == "mikey ") {
+        string b64Message = message.substr(6, message.length() - 6);
+
+        if (message == "")
+            throw MikeyException("No MIKEY message received");
+        else {
+            try {
+                MRef<MikeyMessage*> init_mes = MikeyMessage::parse(b64Message);
+
+                /*  In the future: Re-used the KeyAgreementSAKKE::authenticate() method
+                    with a "no key provided" method
+                ka->setInitiatorData(init_mes);
+                if (init_mes->authenticate(*ka)) {
+                    string msg = "Authentication of the MIKEY init message failed: " + ka->authError();
+                    throw MikeyExceptionAuthentication(msg.c_str());
+                }*/
+               string dbgInfo = init_mes->debugDump();
+               printf("Debug info: %s", dbgInfo.c_str());
+
+                ret = true;
+            } catch (MikeyException& exc) {
+                MIKEY_SAKKE_LOGE("MikeyException caught: %s", exc.what());
+                setState(STATE_ERROR);
+            }
+        }
+    } else {
+        MIKEY_SAKKE_LOGE("Unknown type of key agreement");
+    }
+    return ret;
+}
+
 bool Mikey::getClearInfo(const string& message, mikey_clear_info_t& info) {
     bool ret = false;
 

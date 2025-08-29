@@ -145,10 +145,12 @@ void PF_p_pow(bigint const& p, PF_p& R, PF_p_const A, bigint const& n) {
 }
 //=============================================================================
 
-inline MikeySakkeCrypto::SakkeParameterSet const GetParamSet(std::string const& community, MikeySakkeKMS::KeyAccessPtr const& keys) {
+inline MikeySakkeCrypto::SakkeParameterSet const GetParamSet(std::string const& community, MikeySakkeKMS::KeyAccessPtr const& keys, int keyLen=16) {
     if (keys->GetPublicParameter(community, "SakkeSet") != "1")
         throw std::invalid_argument("Only SAKKE parameter set 1 is supported.");
-
+    if (keyLen == 32) {
+        return MikeySakkeCrypto::sakke_param_set_2();
+    }
     return MikeySakkeCrypto::sakke_param_set_1();
 }
 
@@ -351,8 +353,12 @@ bool ValidateReceiverSecretKey(const OctetString& identifier, std::string const&
         BN_CTX*                ssl = bigint_ssl_scratch::get();
         BN_CTX_start(ssl);
         BIGNUM* ssl_a = BN_CTX_get(ssl);
-        // We should be able to pass identifier.raw(), this is a workaround
+
+#ifdef USE_IDENTIFIER_AS_HEXSTRING
         BN_bin2bn((uint8_t*)identifier.translate().c_str(), identifier.translate().length(), ssl_a);
+#else
+        BN_bin2bn((uint8_t*)identifier.raw(), identifier.size(), ssl_a);
+#endif
         EC_POINT_mul(ecg, ecp_a_P_plus_Z.readwrite_internal<EC_POINT>(), ssl_a, ecp_Z.read_internal<EC_POINT>(), BN_value_one(), ssl);
         BN_CTX_end(ssl);
 
@@ -380,7 +386,7 @@ bool ValidateReceiverSecretKey(const OctetString& identifier, std::string const&
 OctetString GenerateSharedSecretAndSED(OctetString& SED, OctetString const& identifier, std::string const& community,
                                        MikeySakkeKMS::KeyAccessPtr const& keys, const OctetString& SSV) {
 
-    SakkeParameterSet const& params = GetParamSet(community, keys);
+    SakkeParameterSet const& params = GetParamSet(community, keys, SSV.size());
     bigint_scratch           gmp;
     bigint const&            p = params.E_a->field_order();
     bigint const&            q = params.E_a->point_order();
@@ -399,10 +405,16 @@ OctetString GenerateSharedSecretAndSED(OctetString& SED, OctetString const& iden
     // 2) Compute r = HashToIntegerRangeSHA256( SSV || b, q, Hash )
     //
     OctetString SSV_b(SSV);
-    // TODO this is a workaround, we should be able to simply pass the octetstring
+#ifdef USE_IDENTIFIER_AS_HEXSTRING
     SSV_b.concat(OctetString {identifier.translate(), OctetString::Translation::Untranslated});
+#else
+    SSV_b.concat(OctetString {identifier});
+#endif
     bigint& r = gmp.get();
     HashToIntegerRangeSHA256(r, SSV_b.raw(), SSV_b.size(), q);
+    #ifdef SHOW_SECRETS_IN_LOGS_DEV_ONLY
+    MIKEY_SAKKE_LOGD("Step 2/ id[%s] SSV|UID:[%s] = r[%s]", identifier.translate().c_str(), SSV_b.translate().c_str(), ((OctetString)(OctetString::skipws(r.get_str(16)))).translate().c_str());
+    #endif
 
     // 3) Compute R_(b,S) = [r]([b]P + Z_S) in E(F_p)
     //
@@ -423,8 +435,12 @@ OctetString GenerateSharedSecretAndSED(OctetString& SED, OctetString const& iden
         bigint_ssl ssl_rb;
 
         to_BIGNUM(ssl_r, r);
-        // TODO this is a workaround, we should be able to simply pass the octetstring
+#ifdef USE_IDENTIFIER_AS_HEXSTRING
         BN_bin2bn((uint8_t*)identifier.translate().c_str(), identifier.translate().length(), ssl_rb);
+#else
+        BN_bin2bn((uint8_t*)identifier.raw(), identifier.size(), ssl_rb);
+#endif
+
         BN_mul(ssl_rb, ssl_r, ssl_rb, ssl);
 
         auto const*     ecg       = params.E_j->read_internal<EC_GROUP>();
@@ -446,6 +462,7 @@ OctetString GenerateSharedSecretAndSED(OctetString& SED, OctetString const& iden
 
         BN_bn2bin(Rbx_bn, Rbx.raw());
         BN_bn2bin(Rby_bn, Rby.raw());
+        MIKEY_SAKKE_LOGD("Rbx: %s\nRby: %s", Rbx.translate().c_str(), Rby.translate().c_str());
 
         // Write back leading zeroes
         auto zero_bytes = coord_len - Rbx.size();
@@ -514,8 +531,8 @@ OctetString GenerateSharedSecretAndSED(OctetString& SED, OctetString const& iden
 }
 
 OctetString ExtractSharedSecret(OctetString const& SED, const OctetString& identifier, std::string const& community,
-                                MikeySakkeKMS::KeyAccessPtr const& keys) {
-    SakkeParameterSet const& params = GetParamSet(community, keys);
+                                MikeySakkeKMS::KeyAccessPtr const& keys, int SSVSize) {
+    SakkeParameterSet const& params = GetParamSet(community, keys, SSVSize);
     bigint_scratch           scratch;
     bigint const&            p = params.E_a->field_order();
     bigint const&            q = params.E_a->point_order();
@@ -579,8 +596,11 @@ OctetString ExtractSharedSecret(OctetString const& SED, const OctetString& ident
     // 4) Compute r = HashToIntegerRangeSHA256( SSV || b, q, Hash )
     //
     OctetString SSV_b(SSV_octets);
-    // TODO this is a workaround, we should be able to simply pass the octetstring
+#ifdef USE_IDENTIFIER_AS_HEXSTRING
     SSV_b.concat(OctetString {identifier.translate(), OctetString::Translation::Untranslated});
+#else
+    SSV_b.concat(OctetString {identifier});
+#endif
 
     bigint& r = scratch.get();
     HashToIntegerRangeSHA256(r, SSV_b.raw(), SSV_b.size(), q);
@@ -596,8 +616,11 @@ OctetString ExtractSharedSecret(OctetString const& SED, const OctetString& ident
         BIGNUM* ssl_rb = BN_CTX_get(ssl);
 
         to_BIGNUM(ssl_r, r);
-        // We should be able to pass identifier.raw(), this is a workaround
+#ifdef USE_IDENTIFIER_AS_HEXSTRING
         BN_bin2bn((uint8_t*)identifier.translate().c_str(), identifier.translate().length(), ssl_rb);
+#else
+        BN_bin2bn((uint8_t*)identifier.raw(), identifier.size(), ssl_rb);
+#endif
 
         BN_mul(ssl_rb, ssl_r, ssl_rb, ssl);
 
@@ -614,7 +637,9 @@ OctetString ExtractSharedSecret(OctetString const& SED, const OctetString& ident
     }
 
     MIKEY_SAKKE_LOGE("TEST != Rb, Shouldn't use extracted sakke payload");
+    #ifdef SHOW_SECRETS_IN_LOGS_DEV_ONLY
     MIKEY_SAKKE_LOGD("Extracted secret : %s", SSV_octets.translate().c_str());
+    #endif
     return {};
 }
 

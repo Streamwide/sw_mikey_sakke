@@ -135,7 +135,7 @@ void MikeyPayloadT::writeData(uint8_t* start, int expectedLength) {
 
 string MikeyPayloadT::debugDump() {
     return "MikeyPayloadT: next_payload=<" + itoa(nextPayloadType()) + "> tsValue type=<" + itoa(tsTypeValue) + "> tsValue_value=<"
-           + itoa(tsValue) + ">";
+           + std::to_string(tsValue) + ">";
 }
 
 int64_t MikeyPayloadT::offset([[maybe_unused]] int type, uint64_t tsValue) {

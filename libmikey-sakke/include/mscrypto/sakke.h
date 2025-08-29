@@ -42,7 +42,7 @@ OctetString GenerateSharedSecretAndSED(OctetString& SED, OctetString const& iden
  * \return empty string on failure.
  */
 OctetString ExtractSharedSecret(OctetString const& SED, const OctetString& identifier, std::string const& community,
-                                MikeySakkeKMS::KeyAccessPtr const& keys);
+                                MikeySakkeKMS::KeyAccessPtr const& keys, int SSVSize);
 
 std::vector<uint8_t> GenerateGukIdSalt(OctetString peerUri, OctetString const& GMK);
 

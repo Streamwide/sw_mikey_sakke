@@ -274,8 +274,10 @@ static void mikey_sakke_kms_request_callback(KMClient* client, mikey_sakke_key_m
             return;
         }
         MIKEY_SAKKE_LOGI("Retrieving keys for KeyPeriodNo %d", resp->key_period_no)
+        #ifdef SHOW_SECRETS_IN_LOGS_DEV_ONLY
         MIKEY_SAKKE_LOGD("RSK = %s", resp->user_decrypt_key.translate().c_str());
         MIKEY_SAKKE_LOGD("SSK = %s", resp->user_signing_key.translate().c_str());
+        #endif /* SHOW_SECRETS_IN_LOGS_DEV_ONLY */
         MIKEY_SAKKE_LOGD("PVT = %s", resp->user_pub_token.translate().c_str());
 
         if (keys == nullptr) {
@@ -288,6 +290,7 @@ static void mikey_sakke_kms_request_callback(KMClient* client, mikey_sakke_key_m
         keyStorage->StorePrivateKey(client->getUserId().translate(), "RSK", resp->user_decrypt_key);
         keyStorage->StorePrivateKey(client->getUserId().translate(), "SSK", resp->user_signing_key);
         keyStorage->StorePublicKey(client->getUserId().translate(), "PVT", resp->user_pub_token);
+
         MIKEY_SAKKE_LOGD("Stored received keys for user %s", client->getUserId().translate().c_str());
     }
 }
@@ -342,6 +345,38 @@ void mikey_sakke_client_set_security(km_client_t* client, bool security) {
     }
 }
 
+void mikey_sakke_client_set_tls_security(km_client_t* client, bool verify_host, bool verify_peer) {
+    if (client) {
+        from_c(client)->setTlsSecurity(verify_host, verify_peer);
+    }
+}
+
+void mikey_sakke_client_set_ca_cert_bundle(km_client_t* client, const char* ca_filepath) {
+    std::string filepath = "";
+    if (ca_filepath) {
+        filepath = std::string {ca_filepath};
+    }
+
+    if (client) {
+        from_c(client)->setCaCertBundle(filepath);
+    }
+}
+
+void mikey_sakke_client_set_ca_cert_bundle_blob(km_client_t* client, const char* pem_blob) {
+#ifdef CURL_BLOB_SUPPORT /* SmartMS 4.3 is based on REHL9 which is limited to libcurl-7.76 however BLOB has been introduced in 7.77 */
+    std::string pemblob = "";
+    if (pem_blob) {
+        pemblob = std::string {pem_blob};
+    }
+
+    if (client) {
+        from_c(client)->setCaCertBundleBlob(pemblob);
+    }
+#else
+    MIKEY_SAKKE_LOGE("Lib was not compile with Bundle Blob support (lib curl too old), use set_ca_cert_bundle(client, ca_filepath) instead");
+#endif
+}
+
 void mikey_sakke_client_set_timeout(km_client_t* client, uint32_t timeout) {
     if (client) {
         from_c(client)->setTimeout(timeout);
@@ -387,19 +422,7 @@ struct kms_key_material_key_prov* mikey_sakke_get_key_material_key_prov(km_clien
 }
 
 int mikey_sakke_fetch_key_material_key_prov(km_client_t* client) {
-    if (client == nullptr) {
-        return -1;
-    }
-
-    auto ret = from_c(client)->sendRequest(request_type_e::KEY_PROV, nullptr);
-
-    if (ret == 0) {
-        MIKEY_SAKKE_LOGI("KMS KeyProv request sent successfully");
-    } else {
-        MIKEY_SAKKE_LOGE("KMS KeyProv request could not be sent : curl error %d", ret);
-    }
-
-    return ret;
+    return mikey_sakke_fetch_key_material_key_prov_period(client, 0);
 }
 
 int mikey_sakke_fetch_key_material_key_prov_period(km_client_t* client, uint32_t key_period_timestamp_s) {
@@ -410,7 +433,15 @@ int mikey_sakke_fetch_key_material_key_prov_period(km_client_t* client, uint32_t
     request_params_t params {};
     params.requested_key_timestamp = ((uint64_t)key_period_timestamp_s) << 32;
 
-    return from_c(client)->sendRequest(request_type_e::KEY_PROV, &params);
+    auto ret = from_c(client)->sendRequest(request_type_e::KEY_PROV, (key_period_timestamp_s ? &params : nullptr));
+
+    if (ret == 0) {
+        MIKEY_SAKKE_LOGI("KMS KeyProv request sent successfully");
+    } else {
+        MIKEY_SAKKE_LOGE("KMS KeyProv request could not be sent : curl error %d", ret);
+    }
+
+    return ret;
 }
 
 void mikey_sakke_provision_key_material(mikey_sakke_key_material_t* keys, const char* identifier, const char* key_name, const char* key,
@@ -907,18 +938,18 @@ void mikey_sakke_gen_salt2(uint8_t cs_id, uint8_t* csb_id, uint8_t* key, size_t 
     KeyAgreement::keyDeriv2(cs_id, csb_id, key, key_len, master_salt_out, master_salt_len, KEY_DERIV_SALT, rand, rand_len);
 }
 
-uint8_t* mikey_sakke_gen_key() {
+uint8_t* mikey_sakke_gen_key(int len) {
     uint8_t* key = nullptr;
-    key          = (uint8_t*)malloc(MIKEY_SAKKE_DEFAULT_KEY_SIZE);
+    key          = (uint8_t*)malloc(len);
 
-    Rand::randomize(key, MIKEY_SAKKE_DEFAULT_KEY_SIZE);
+    Rand::randomize(key, len);
 
     return key;
 }
 
-char* mikey_sakke_gen_key_b64() {
-    uint8_t*    key     = mikey_sakke_gen_key();
-    std::string key_b64 = base64_encode(key, MIKEY_SAKKE_DEFAULT_KEY_SIZE);
+char* mikey_sakke_gen_key_b64(int len) {
+    uint8_t*    key     = mikey_sakke_gen_key(len);
+    std::string key_b64 = base64_encode(key, len);
     free(key);
     return strdup(key_b64.c_str());
 }

@@ -27,7 +27,26 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "BUILD_SHARED_LIBS": false,
-                "BUILD_TESTING": true
+                "MODE_CURL_BLOB": false,
+                "USE_SYSTEM_CURL": true,
+                "BUILD_TESTING": true,
+                "SHOW_SECRETS_IN_LOGS_DEV_ONLY": true
+            },
+            "warnings": {
+                "dev": false
+            }
+        },
+        {
+            "name": "mobile",
+            "displayName": "Config Release for iOS/Android",
+            "description": "Default build for release targeting mobile",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/mobile",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BUILD_SHARED_LIBS": false,
+                "MODE_CURL_BLOB": true,
+                "BUILD_TESTING": false
             },
             "warnings": {
                 "dev": false
@@ -61,6 +80,26 @@
                 "CMAKE_BUILD_TYPE": "Release",
                 "BUILD_TESTING": false,
                 "BUILD_PHPLIB": true,
+                "CURL_SSL": true,
+                "BUILD_SHARED_LIBS": false,
+                "USE_SPDLOG": true
+            },
+            "warnings": {
+                "dev": false
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release mode for injectors",
+            "description": "Build for injectors",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BUILD_TESTING": false,
+                "BUILD_PHPLIB": true,
+                "CURL_SSL": true,
+                "BUILD_SHARED_LIBS": false,
                 "USE_SPDLOG": true
             },
             "warnings": {
@@ -78,8 +117,16 @@
             "configurePreset": "dev"
         },
         {
+            "name": "mobile",
+            "configurePreset": "mobile"
+        },
+        {
             "name": "engine",
             "configurePreset": "engine"
+        },
+        {
+            "name": "release",
+            "configurePreset": "release"
         },
         {
             "name": "php",

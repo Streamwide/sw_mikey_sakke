@@ -24,6 +24,8 @@
 #include <cstring>
 #include <utility>
 
+using libmutil::itoa;
+
 /* From TS 33.180 §G, the key types (purpose tags) are */
 enum {
     GMK   = 0,
@@ -257,6 +259,15 @@ class MikeyPayloadSAKKE : public MikeyPayload {
     SakkeIdentifierScheme id_scheme {MikeySakkeUid};
     int                   key_type;
 
+    std::string debugDump() override {
+        std::string ret;
+
+        ret = "SakkeType:" + itoa(key_type) + " ParamsValue:" + itoa(iana_sakke_params_value) + " GUK-ID(" + std::string(GUK_ID.translate().c_str()) + ")\n";
+        ret += "SED: \n" + std::string(SED.translate().c_str());
+
+        return ret;
+    }
+
     MikeyPayloadSAKKE(KeyAgreementSAKKE* ka, SakkeParameterSet const* params, OctetString const& peerId, std::string const& peerCommunity,
                       KeyAccessPtr const& keyStore, int key_type, OctetString key)
         : iana_sakke_params_value(params->iana_sakke_params_value), key_type(key_type) {
@@ -350,7 +361,8 @@ class MikeyMessageSAKKE : public MikeyMessage {
 
         OctetString senderId, peerId;
 
-        auto keyPeriodNoStr = keyStore->GetPublicParameter(senderCommunity, "KeyPeriodNo");
+        // Hack of keyStore to be able to use a key that is not of the current period
+        auto keyPeriodNoStr = keyStore->GetPublicParameter(senderCommunity, "UserKeyPeriodNoSet");
 
         if (keyPeriodNoStr.empty()) {
             // If no particular period number was specified, let it compute the current period no
@@ -394,15 +406,9 @@ class MikeyMessageSAKKE : public MikeyMessage {
             }
         }
 
-        // for one-way transmissions (such as PA/Tannoy/Simplex
-        // intercom), no CS Id update is necessary.
-        // XXX: currently this is hard-coded to false but ought to be
-        // XXX: based on the requesting user's intent.
-        static constexpr bool unidirectional = false;
-
-        // adding header payload
-        addPayload(new MikeyPayloadHDR(HDR_DATA_TYPE_SAKKE_INIT, unidirectional ? 0 : 1, HDR_PRF_MIKEY_1, csbId, ka->nCs(),
-                                       ka->getCsIdMapType(), ka->csIdMap()));
+        // adding header payload v=0 (TS.33-180  E-1.2)
+        addPayload(
+            new MikeyPayloadHDR(HDR_DATA_TYPE_SAKKE_INIT, 0, HDR_PRF_MIKEY_256, csbId, ka->nCs(), ka->getCsIdMapType(), ka->csIdMap()));
 
         // adding timestamp payload
         addPayload(tPayload);
@@ -538,7 +544,8 @@ class MikeyMessageSAKKE : public MikeyMessage {
 
         OctetString senderId, responderId;
 
-        auto keyPeriodNoStr = keys->GetPublicParameter(senderCommunity, "KeyPeriodNo");
+        // Hack of keyStore to be able to use a key that is not of the current period
+        auto keyPeriodNoStr = keys->GetPublicParameter(responderCommunity, "UserKeyPeriodNoSet");
 
         if (keyPeriodNoStr.empty()) {
             // If no particular period number was specified, let it compute the current period no
@@ -627,11 +634,15 @@ class MikeyMessageSAKKE : public MikeyMessage {
         OctetString                   KID;
         KeyParametersPayload::KeyType type = KeyParametersPayload::KeyType::UNDEFINED;
         try {
-
-            SSV = ExtractSharedSecret(sakke->SED, responderId, responderCommunity, keys);
+            // Use the RAND previously parsed as it must be the same length as SSV output
+            SSV = ExtractSharedSecret(sakke->SED, responderId, responderCommunity, keys, ka->randLength());
 
             if (!SSV.empty()) {
+                #ifdef SHOW_SECRETS_IN_LOGS_DEV_ONLY
                 MIKEY_SAKKE_LOGD("SAKKE encapsulated data decrypted ; SSV = %s", SSV.translate().c_str());
+                #else
+                MIKEY_SAKKE_LOGD("SAKKE encapsulated data decrypted");
+                #endif /* SHOW_SECRETS_IN_LOGS_DEV_ONLY */
             } else {
                 MIKEY_SAKKE_LOGE("SAKKE encapsulated data could not be decrypted");
             }
@@ -759,13 +770,17 @@ MikeyMessage* KeyAgreementSAKKE::createMessage(struct key_agreement_params* para
 /** sets the TEK Generating Key*/
 void KeyAgreementSAKKE::setTgk(uint8_t* tgk, unsigned int tgkLength) {
     OctetString ssv(tgkLength, tgk);
+    #ifdef SHOW_SECRETS_IN_LOGS_DEV_ONLY
     MIKEY_SAKKE_LOGD("Using TGK : %s", ssv.translate().c_str());
+    #endif /* SHOW_SECRETS_IN_LOGS_DEV_ONLY */
     return KeyAgreement::setTgk(tgk, tgkLength);
 }
 
 // Sets the Key for control signalling (KFC)
 void KeyAgreementSAKKE::setKfc(uint8_t* kfc, unsigned int kfcLength) {
     OctetString ssv(kfcLength, kfc);
+    #ifdef SHOW_SECRETS_IN_LOGS_DEV_ONLY
     MIKEY_SAKKE_LOGD("Using KFC : %s", ssv.translate().c_str());
+    #endif /* SHOW_SECRETS_IN_LOGS_DEV_ONLY */
     return KeyAgreement::setKfc(kfc, kfcLength);
 }

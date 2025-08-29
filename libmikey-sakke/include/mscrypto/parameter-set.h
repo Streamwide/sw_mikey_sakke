@@ -53,6 +53,7 @@ struct SigningParameterSet {
  * MIKEY-SAKKE (RFC 6509).
  */
 SakkeParameterSet const& sakke_param_set_1();
+SakkeParameterSet const& sakke_param_set_2();
 
 /**
  * The P-256 curve used for MIKEY-SAKKE message signing (RFC 6509).

@@ -146,6 +146,9 @@ char* mikey_sakke_client_get_user_id(km_client_t* client);
 void  mikey_sakke_client_set_kms_uri(km_client_t* client, const char* kms_uri);
 
 void mikey_sakke_client_set_security(km_client_t* client, bool security);
+void mikey_sakke_client_set_tls_security(km_client_t* client, bool verify_host, bool verify_peer);
+void mikey_sakke_client_set_ca_cert_bundle(km_client_t* client, const char* ca_filepath);
+void mikey_sakke_client_set_ca_cert_bundle_blob(km_client_t* client, const char* pem_blob);
 void mikey_sakke_client_set_timeout(km_client_t* client, uint32_t timeout);
 
 const mikey_sakke_key_material_t* mikey_sakke_client_get_key_store(km_client_t* client);
@@ -325,8 +328,8 @@ char*    mikey_sakke_gen_key_id_b64(uint8_t key_type);
 /**
  * Generates a 16 bytes key
  */
-uint8_t* mikey_sakke_gen_key();
-char*    mikey_sakke_gen_key_b64();
+uint8_t* mikey_sakke_gen_key(int key_len);
+char*    mikey_sakke_gen_key_b64(int key_len);
 
 /**
  * Generates a UID in format 2 as specified in TS 33.180 §F.2.1

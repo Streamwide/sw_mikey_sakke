@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.25)
 project(sw_mikey_sakke LANGUAGES    CXX
                        DESCRIPTION  "Implementation of TS33.180")
 
@@ -16,6 +16,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDANT_CODE ON)
+set(CURL_USE_STATIC_LIBS TRUE)
 
 message(STATUS "C++ standard        : ${CMAKE_CXX_STANDARD}")
 message(STATUS "C++ compiler        : ${CMAKE_CXX_COMPILER_ID}")
@@ -27,11 +28,16 @@ set (DIRLIBMIKEY           ./libmikey)
 set (DIRLIBMIKEYSAKKE      ./libmikey-sakke)
 set (DIRLIBKMSAGENT        ./kms-agent)
 
+set (GMP_VERSION            6.3.0)
+
 option(USE_SPDLOG       "Build with spdlog" OFF)
 option(SECURED_REQUESTS "Adds a signed XML secure request element to the HTTP requests. (Not supported yet)" OFF)
 option(OPENSSL_ONLY     "Use only Openssl for arithmetic. Will build without GMP" OFF)
 option(BUILD_PHPLIB     "Build the library with PHP bindings" OFF)
 option(ENGINE_BUILD     "Build the library for the engine" OFF)
+option(MODE_AIRBUS      "Special crypto mode where UserID is used as an hexstring instead of raw hex in crypto routines (use it only if you know what you are doing)" OFF)
+option(SHOW_CERTS       "Build the library for debug ONLY including the log of secret credentials" OFF)
+option(MODE_CURL_BLOB   "Build the library without CA BLOB support (when curl system library is version < 7.77" OFF)
 
 if (USE_SPDLOG)
     message(STATUS "Building with spdlog")
@@ -49,6 +55,26 @@ if(BUILD_SHARED_LIBS)
 else()
     set(OPENSSL_USE_STATIC_LIBS ON)
 endif()
+
+if (SHOW_SECRETS_IN_LOGS_DEV_ONLY)
+    message(STATUS "WARNING: Be aware secrets will be in logs -> DEV ONLY")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DSHOW_SECRETS_IN_LOGS_DEV_ONLY")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSHOW_SECRETS_IN_LOGS_DEV_ONLY")
+endif()
+
+# Wait for REHL9u6 to have full blob support
+if (MODE_CURL_BLOB)
+    message(STATUS "CURL_BLOB_SUPPORT: Activate it only if you have a libcurl >= 7.77")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DCURL_BLOB_SUPPORT")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCURL_BLOB_SUPPORT")
+endif()
+
+if (MODE_AIRBUS)
+    message(STATUS "MODE_AIRBUS: Special mode to support the Airbus KMS !!!!")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DUSE_IDENTIFIER_AS_HEXSTRING")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_IDENTIFIER_AS_HEXSTRING")
+endif()
+
 
 if(NOT TARGET LibXml2::LibXml2)
     find_package(LibXml2 REQUIRED)
@@ -74,7 +100,7 @@ if(USE_SPDLOG)
 endif()
 
 if(NOT TARGET CURL::libcurl)
-    if(ENGINE_BUILD)
+    if(ENGINE_BUILD OR BUILD_PHPLIB OR USE_SYSTEM_CURL)
         find_package(CURL)
     else()
         message(STATUS "curl will be compiled from third_party")
@@ -142,6 +168,7 @@ if(OPENSSL_ONLY)
         ${DIRLIBMIKEYSAKKE}/src/util/bigint-ssl.cc
         ${DIRLIBMIKEYSAKKE}/src/util/time-measure.cc
         ${DIRLIBMIKEYSAKKE}/src/util/octet-string.cc
+        ${DIRLIBMIKEYSAKKE}/src/util/mcdata-crypto.cc
     )
 else()
     file(GLOB libswmikeysakke_source_files
@@ -155,7 +182,8 @@ else()
         ${DIRLIBMIKEYSAKKE}/src/util/bigint-ssl.cc
         ${DIRLIBMIKEYSAKKE}/src/util/time-measure.cc
         ${DIRLIBMIKEYSAKKE}/src/util/octet-string.cc
-    )
+        ${DIRLIBMIKEYSAKKE}/src/util/mcdata-crypto.cc
+)
 endif()
 
 add_library(${PROJECT_NAME}
@@ -202,10 +230,12 @@ target_include_directories(
     ${OPENSSL_INCLUDE_DIR}
 )
 
+# no-vla prevent a compile error on XCode for iOS
 target_compile_options(sw_mikey_sakke
     PRIVATE
     -Wall -Werror -Wextra
     -Wno-shorten-64-to-32
+    -Wno-vla
 )
 
 set_target_properties(

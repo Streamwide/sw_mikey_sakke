@@ -33,8 +33,8 @@ TEST(imessage_gen, csk) {
     ASSERT_TRUE(mikey_sakke_validate_signing_keys(alice_id, keys));
 
     // Generate I_MESSAGE from Alice to GMS
-    uint8_t*            csk            = mikey_sakke_gen_key();
-    uint8_t*            csk_rand       = mikey_sakke_gen_key();
+    uint8_t*            csk            = mikey_sakke_gen_key(16);
+    uint8_t*            csk_rand       = mikey_sakke_gen_key(16);
     uint8_t*            csk_id         = mikey_sakke_gen_key_id(CSK);
     mikey_sakke_call_t* alice_outgoing = mikey_sakke_alloc_call(alice_user);
 

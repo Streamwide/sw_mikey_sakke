@@ -48,7 +48,8 @@ MikeyPayloadID::MikeyPayloadID(uint8_t* start, int lengthLimit, bool expectIDR):
 
     int const minLength = 4 + (expectIDR ? 1 : 0);
     if (lengthLimit < minLength) {
-        throw MikeyExceptionMessageLengthException("Given data is too short to form a ID/IDR Payload");
+        string e = "Given initial data is too short (" + std::to_string(lengthLimit) + "B) to form a ID/IDR Payload";
+        throw MikeyExceptionMessageLengthException(e.c_str());
     }
     if (expectIDR)
         this->payloadTypeValue = MIKEYPAYLOAD_IDR_PAYLOAD_TYPE;
@@ -63,7 +64,8 @@ MikeyPayloadID::MikeyPayloadID(uint8_t* start, int lengthLimit, bool expectIDR):
     idLengthValue = (int)(start[0]) << 8 | start[1];
     start += 2;
     if (lengthLimit < minLength + idLengthValue) {
-        throw MikeyExceptionMessageLengthException("Given data is too short to form a ID/IDR Payload");
+        string e = "Given data is too short (" + std::to_string(lengthLimit) + "B) to form a ID/IDR Payload";
+        throw MikeyExceptionMessageLengthException(e.c_str());
     }
 
     idDataPtr = new uint8_t[idLengthValue];
@@ -97,10 +99,40 @@ int MikeyPayloadID::length() const {
     return (idRoleValue != MIKEYPAYLOAD_ID_ROLE_UNSPECIFIED ? 5 : 4) + idLengthValue;
 }
 
-string MikeyPayloadID::debugDump() {
+const char* MikeyPayloadID::RoleTypeToString(int e) {
+    switch (e) {
+        case MIKEYPAYLOAD_ID_ROLE_UNSPECIFIED:      return "unspecified";
+        case MIKEYPAYLOAD_ID_ROLE_INITIATOR:        return "initiator";
+        case MIKEYPAYLOAD_ID_ROLE_RESPONDER:        return "responder";
+        case MIKEYPAYLOAD_ID_ROLE_KMS:              return "kms";
+        case MIKEYPAYLOAD_ID_ROLE_PRE_SHARED_KEY:   return "psk";
+        case MIKEYPAYLOAD_ID_ROLE_APPLICATION:      return "application";
+        case MIKEYPAYLOAD_ID_ROLE_INITIATOR_KMS:    return "initiator_kms";
+        case MIKEYPAYLOAD_ID_ROLE_RESPONDER_KMS:    return "responder_kms";
+        default:                                    return "unknown";
+    }
+}
 
-    return "MikeyPayloadID: nextPayloadType=<" + itoa(nextPayloadType()) + "> role=<" + itoa(idRoleValue) + "> type=<" + itoa(idTypeValue)
-           + "> length=<" + itoa(idLengthValue) + "> data=<" + binToHex(idDataPtr, idLengthValue) + ">";
+string MikeyPayloadID::debugDump() {
+    string res = "";
+    res += "MikeyPayloadID: nextPayloadType=<" + itoa(nextPayloadType());
+    res += "> role=<" + string(RoleTypeToString(idRoleValue)) + "(" + itoa(idRoleValue) + ")> type=<" + itoa(idTypeValue);
+    res += "> length=<" + itoa(idLengthValue) + "> ";
+    string tmp = "";
+    bool printable = true;
+    for(int i=0; i<idLengthValue; i++) {
+        tmp += idDataPtr[i];
+        if (!(idDataPtr[i] >= ' ' && idDataPtr[i] <= '~')) {
+            printable = false;
+        }
+    }
+    if (printable) {
+        res += "text: " + tmp + ">";
+    } else {
+        res += "bin: " + binToHex(idDataPtr, idLengthValue) + ">";
+    }
+
+    return res+"\n";
 }
 
 MikeyPayloadIDType MikeyPayloadID::idType() const {

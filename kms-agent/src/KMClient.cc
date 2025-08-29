@@ -3,9 +3,11 @@
 #include <chrono>
 #include <cstring>
 #include <iomanip>
+#include <iostream>
 #include <libmutil/Logger.h>
 #include <libxml/encoding.h>
 #include <libxml/xmlwriter.h>
+#include <regex>
 #include <sstream>
 #include <thread>
 #include <utility>
@@ -15,6 +17,8 @@
 #include <xmlsec/xmlsec.h>
 #include <xmlsec/xmltree.h>
 #endif
+
+// #define CURL_DEBUG
 
 static constexpr const char KMS_INIT_PATH[]    = "/keymanagement/identity/v1/init";
 static constexpr const char KMS_KEYPROV_PATH[] = "/keymanagement/identity/v1/keyprov";
@@ -57,6 +61,14 @@ KMClient::KMClient(std::string server, bool extra_security, mikey_sakke_key_mate
 #endif
     init_response     = nullptr;
     key_prov_response = nullptr;
+    // By default, no encryption layer is added. Must be specified in URI if required.
+    kms_port   = 8080L;
+    enable_tls = false;
+    // No verification can be done at this moment: a way to get it on android side must be found
+    tls_verify_host = true;
+    tls_verify_peer = true;
+    ca_filepath     = std::string();
+    inferDataFromUri();
 }
 
 KMClient::~KMClient() {
@@ -74,17 +86,40 @@ KMClient::~KMClient() {
     }
 }
 
-bool KMClient::genSecureRequest(request_type_e type, [[maybe_unused]] request_params_t* params) {
-    int              rc;
-    xmlTextWriterPtr writer;
-    xmlBufferPtr     buf;
+void KMClient::inferDataFromUri() {
+    if (kms_uri.size() > 0) {
+        if (strncmp(kms_uri.c_str(), "https://", 8) == 0) {
+            enable_tls = true;
+            kms_port   = 443;
+        }
+        std::regex  regexp_port(":([0-9]+).*", std::regex::extended);
+        std::smatch port_match;
+        if (std::regex_search(kms_uri.cbegin(), kms_uri.cend(), port_match, regexp_port)) {
+            if (port_match.size() > 0) {
+                kms_port = stol(port_match.str(1));
+            }
+        }
+    }
+}
 
-    buf = xmlBufferCreate();
-    if (buf == nullptr) {
+static inline int kmclient_output_write_callback(void* context, const char* buffer, int len) {
+    std::string* str = (std::string*)context;
+    str->append(buffer, len);
+    return len;
+}
+
+bool KMClient::genSecureRequest(request_type_e type, [[maybe_unused]] request_params_t* params) {
+    int                rc;
+    xmlTextWriterPtr   writer;
+    xmlOutputBufferPtr output_buffer;
+    kms_request_xml.clear();
+
+    output_buffer = xmlOutputBufferCreateIO(kmclient_output_write_callback, NULL, &kms_request_xml, NULL);
+    if (output_buffer == nullptr) {
         return false;
     }
 
-    writer = xmlNewTextWriterMemory(buf, 0);
+    writer = xmlNewTextWriter(output_buffer);
     if (writer == nullptr) {
         return false;
     }
@@ -372,15 +407,109 @@ bool KMClient::genSecureRequest(request_type_e type, [[maybe_unused]] request_pa
     }
 
     xmlFreeTextWriter(writer);
-    kms_request_xml = (const char*)buf->content;
-    xmlBufferFree(buf);
     MIKEY_SAKKE_LOGD("Generated the following request \n%s", kms_request_xml.c_str());
     return true;
 }
 
+#ifdef CURL_DEBUG
+// CODE GATHERED FROM LIBCURL
+static int curl_debug_trace(CURL* handle, curl_infotype type, char* data, size_t size, void* userp);
+
+struct data {
+    char trace_ascii; /* 1 or 0 */
+};
+
+static void dump(const char* text, FILE* stream, unsigned char* ptr, size_t size, char nohex) {
+    size_t i;
+    size_t c;
+
+    unsigned int width = 0x10;
+
+    if (nohex)
+        /* without the hex output, we can fit more on screen */
+        width = 0x40;
+
+    fprintf(stream, "%s, %10.10lu bytes (0x%8.8lx)\n", text, (unsigned long)size, (unsigned long)size);
+
+    for (i = 0; i < size; i += width) {
+
+        fprintf(stream, "%4.4lx: ", (unsigned long)i);
+
+        if (!nohex) {
+            /* hex not disabled, show it */
+            for (c = 0; c < width; c++)
+                if (i + c < size)
+                    fprintf(stream, "%02x ", ptr[i + c]);
+                else
+                    fputs("   ", stream);
+        }
+
+        for (c = 0; (c < width) && (i + c < size); c++) {
+            /* check for 0D0A; if found, skip past and start a new line of output */
+            if (nohex && (i + c + 1 < size) && ptr[i + c] == 0x0D && ptr[i + c + 1] == 0x0A) {
+                i += (c + 2 - width);
+                break;
+            }
+            fprintf(stream, "%c", (ptr[i + c] >= 0x20) && (ptr[i + c] < 0x80) ? ptr[i + c] : '.');
+            /* check again for 0D0A, to avoid an extra \n if it's at width */
+            if (nohex && (i + c + 2 < size) && ptr[i + c + 1] == 0x0D && ptr[i + c + 2] == 0x0A) {
+                i += (c + 3 - width);
+                break;
+            }
+        }
+        fputc('\n', stream); /* newline */
+    }
+    fflush(stream);
+}
+
+int curl_debug_trace(CURL* handle, curl_infotype type, char* data, size_t size, void* userp) {
+    struct data* config = (struct data*)userp;
+    const char*  text;
+    (void)handle; /* prevent compiler warning */
+
+    switch (type) {
+        case CURLINFO_TEXT:
+            fprintf(stderr, "== Info: %s", data);
+            return 0;
+        case CURLINFO_HEADER_OUT:
+            text = "=> Send header";
+            break;
+        case CURLINFO_DATA_OUT:
+            text = "=> Send data";
+            break;
+        case CURLINFO_SSL_DATA_OUT:
+            text = "=> Send SSL data";
+            break;
+        case CURLINFO_HEADER_IN:
+            text = "<= Recv header";
+            break;
+        case CURLINFO_DATA_IN:
+            text = "<= Recv data";
+            break;
+        case CURLINFO_SSL_DATA_IN:
+            text = "<= Recv SSL data";
+            break;
+        default: /* in case a new one is introduced to shock us */
+            return 0;
+    }
+
+    dump(text, stderr, (unsigned char*)data, size, config->trace_ascii);
+    return 0;
+}
+
+#endif // CURL_DEBUG
+
 int KMClient::sendRequest(request_type_e type, request_params_t* params) {
     curl_easy_reset(curl_handle);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, &KMClient::curl_callback);
+#ifdef CURL_BLOB_SUPPORT
+    struct curl_blob blob;
+#endif
+
+#ifdef CURL_DEBUG
+    struct data config;
+    config.trace_ascii = 0;
+#endif // CURL_DEBUG
 
     std::string resource_uri = kms_uri + request_type_to_path_str(type);
     // §D.2.4
@@ -395,7 +524,44 @@ int KMClient::sendRequest(request_type_e type, request_params_t* params) {
     curl_easy_setopt(curl_handle, CURLOPT_URL, resource_uri.c_str());
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, &this->curl_rx_data);
     curl_easy_setopt(curl_handle, CURLOPT_POST, 1);
-    curl_easy_setopt(curl_handle, CURLOPT_PORT, 8080L);
+    curl_easy_setopt(curl_handle, CURLOPT_PORT, kms_port);
+    if (enable_tls) {
+        curl_easy_setopt(curl_handle, CURLOPT_USE_SSL, CURLUSESSL_ALL);
+        curl_easy_setopt(curl_handle, CURLOPT_SSLVERSION, CURL_SSLVERSION_TLSv1_3);
+        if (!tls_verify_peer) {
+            curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYPEER, 0L);
+        }
+        if (!tls_verify_host) {
+            curl_easy_setopt(curl_handle, CURLOPT_SSL_VERIFYHOST, 0L);
+        }
+
+#ifdef CURL_DEBUG
+        curl_easy_setopt(curl_handle, CURLOPT_DEBUGFUNCTION, &curl_debug_trace);
+        curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
+        curl_easy_setopt(curl_handle, CURLOPT_DEBUGDATA, &config);
+#endif // CURL_DEBUG
+
+        // On a linux system, there is a CA repo, but not on android, at least not system wide
+        // Then, we need to have our own TODO: deactivated until a way is found to get this file on android
+        if (ca_filepath.size() > 0) {
+            curl_easy_setopt(curl_handle, CURLOPT_CAINFO, ca_filepath.c_str());
+        }
+#ifdef CURL_BLOB_SUPPORT
+        if (ca_blob.size() > 0) {
+            MIKEY_SAKKE_LOGD("Setup PEM string: %s", ca_blob.c_str());
+            MIKEY_SAKKE_LOGD("Setup PEM string lenght: %d", ca_blob.size());
+            blob.data    = (void*)ca_blob.c_str();
+            blob.len     = ca_blob.size();
+            blob.flags   = CURL_BLOB_COPY;
+            int ret_blob = curl_easy_setopt(curl_handle, CURLOPT_CAINFO_BLOB, &blob);
+            MIKEY_SAKKE_LOGD("Setopt Blob: %d", ret_blob);
+        }
+#endif
+
+        // Note: if OpenSSL does raise "unexpectd eof" error after receiving response from server
+        //       let's assume a server issue. Request the server to set "Content-Lenght" header
+        //       to get rid of the error (that makes the curl call failing)
+    }
     if (!token.empty()) {
         curl_easy_setopt(curl_handle, CURLOPT_HTTPAUTH, CURLAUTH_BEARER);
         curl_easy_setopt(curl_handle, CURLOPT_XOAUTH2_BEARER, token.c_str());
@@ -437,7 +603,10 @@ int KMClient::sendRequest(request_type_e type, request_params_t* params) {
         MIKEY_SAKKE_LOGI("Request sent successfuly to %s", resource_uri.c_str());
     }
 
-    kms_request_user_callback(type, params);
+    if (!kms_request_user_callback(type, params)) {
+        MIKEY_SAKKE_LOGE("Failure to parse correctly cURL response (KMS server answer does not comply with what is expected)");
+        return -1;
+    }
 
     return (int)res;
 }
@@ -518,6 +687,7 @@ std::string KMClient::getUserUri() const {
 
 void KMClient::setKmsUri(const std::string& uri) {
     kms_uri = uri;
+    inferDataFromUri();
 }
 
 std::string KMClient::getKmsUri() const {
@@ -541,15 +711,28 @@ void KMClient::setSecurity(bool sec) {
     security = sec;
 }
 
+void KMClient::setTlsSecurity(bool verify_host, bool verify_peer) {
+    tls_verify_host = verify_host;
+    tls_verify_peer = verify_peer;
+}
+
+void KMClient::setCaCertBundle(const std::string& ca_bundle_filepath) {
+    ca_filepath = ca_bundle_filepath;
+}
+
+void KMClient::setCaCertBundleBlob(const std::string& pem_blob) {
+    ca_blob = pem_blob;
+}
+
 void KMClient::setTimeout(uint32_t to) {
     timeout_ms = to;
 }
 
-void KMClient::kms_request_user_callback(request_type_e type, request_params_t* params) {
-    MIKEY_SAKKE_LOGI("Received %s response", request_type_to_string(type).c_str());
+bool KMClient::kms_request_user_callback(request_type_e type, [[maybe_unused]] request_params_t* params) {
 
     long                        http_code = 0;
     mikey_sakke_key_material_t* keys      = kms_response_listener.keyStore;
+    bool                        res = false;
 
     curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &http_code);
 
@@ -558,10 +741,12 @@ void KMClient::kms_request_user_callback(request_type_e type, request_params_t* 
         response = (struct kms_response**)&this->init_response;
     } else if (type == request_type_e::KEY_PROV) {
         response = (struct kms_response**)&this->key_prov_response;
-        if (params && params->requested_key_timestamp != 0) {
-            // Keys requested for future periods should not be written in keystore
-            keys = nullptr;
-        }
+        // 20240912-RBY: Why can't we write the keys ? If doing so, then they cannot be used for the session
+        //               make no sense yet. Delete all this once a logic of this limitation is found
+        // if (params && params->requested_key_timestamp != 0) {
+        // Keys requested for future periods should not be written in keystore
+        //    keys = nullptr;
+        //}
     }
 
     if (http_code == 200) {
@@ -575,11 +760,12 @@ void KMClient::kms_request_user_callback(request_type_e type, request_params_t* 
         curl_rx_data.size     = 0;
         if (!ret) {
             MIKEY_SAKKE_LOGE("Could not parse request response of type %s", request_type_to_string(type).c_str());
-            return;
+            return false;
         }
         if (kms_response_listener.callback != nullptr) {
             kms_response_listener.callback(this, keys, *response, type);
         }
+        res = true;
     } else {
         MIKEY_SAKKE_LOGE("%s failed, error code %ld", request_type_to_string(type).c_str(), http_code);
         if (*response) {
@@ -587,6 +773,8 @@ void KMClient::kms_request_user_callback(request_type_e type, request_params_t* 
             *response = nullptr;
         }
     }
+
+    return res;
 }
 
 size_t KMClient::curl_callback(char* rx_data, size_t size, size_t nmemb, void* userdata) {

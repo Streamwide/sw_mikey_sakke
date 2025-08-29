@@ -71,6 +71,9 @@ class KMClient {
     OctetString getUserId() const;
     void        setToken(const std::string& tok);
     void        setSecurity(bool sec);
+    void        setTlsSecurity(bool verify_host, bool verify_peer);
+    void        setCaCertBundle(const std::string& ca_bundle_filepath);
+    void        setCaCertBundleBlob(const std::string& pem_blob);
     void        setTimeout(uint32_t to);
 
     inline std::string get_xml_request() const {
@@ -84,6 +87,12 @@ class KMClient {
 
   private:
     std::string kms_uri;
+    long        kms_port;
+    bool        enable_tls;
+    bool        tls_verify_peer;
+    bool        tls_verify_host;
+    std::string ca_filepath;
+    std::string ca_blob;
     CURL*       curl_handle;
     bool        security;
     uint32_t    timeout_ms;
@@ -110,7 +119,8 @@ class KMClient {
 
     static size_t curl_callback(char* ptr, size_t size, size_t nmemb, void* userdata);
 
-    void kms_request_user_callback(request_type_e type, request_params_t* params);
+    bool kms_request_user_callback(request_type_e type, request_params_t* params);
+    void inferDataFromUri();
 };
 
 #endif

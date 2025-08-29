@@ -22,6 +22,7 @@
  */
 
 #include <config.h>
+#include <libmutil/config.h>
 
 #ifdef HAVE_OPENSSL_AES_H
 #include <openssl/aes.h>

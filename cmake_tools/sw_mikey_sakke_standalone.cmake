@@ -63,13 +63,17 @@ if(NOT TARGET CURL::libcurl)
     set(OPENSSL_INCLUDE_DIR ${OPENSSL_INCLUDE_DIR} CACHE INTERNAL "")
     set(USE_LIBIDN2 OFF CACHE INTERNAL "")
     set(USE_ZLIB OFF CACHE INTERNAL "")
+    set(USE_NGHTTP2 OFF CACHE INTERNAL "")
+    set(CURL_USE_LIBPSL OFF CACHE INTERNAL "")
+    #set(HAVE_ZSTD OFF CACHE INTERNAL "")
     set(CMAKE_USE_LIBSSH2 OFF CACHE INTERNAL "")
     set(CMAKE_POSITION_INDEPENDENT_CODE ON CACHE INTERNAL "")
 
     FetchContent_Declare(
         libcurl
         EXCLUDE_FROM_ALL
-        URL ${CMAKE_CURRENT_SOURCE_DIR}/third_party/curl-7.85.0.tar.gz
+        URL_HASH SHA256=b72ec874e403c90462dc3019c5b24cc3cdd895247402bf23893b3b59419353bc
+        URL https://curl.se/download/curl-8.12.0.tar.gz
     )
     FetchContent_MakeAvailable(libcurl)
 endif()
@@ -94,11 +98,17 @@ endif()
 if(NOT OPENSSL_ONLY AND (NOT TARGET gmp OR NOT TARGET gmpxx))
     set (DIRLIBGMP ./lib/gmp)
 
+    if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/gmp-${GMP_VERSION}.tar.gz)
+        set (URL_GMP ${CMAKE_CURRENT_SOURCE_DIR}/third_party/gmp-${GMP_VERSION}.tar.gz)
+    else()
+        set (URL_GMP https://gmplib.org/download/gmp/gmp-${GMP_VERSION}.tar.gz)
+    endif()
+
     ExternalProject_Add(libgmp
-        URL ${CMAKE_CURRENT_SOURCE_DIR}/third_party/gmp-6.2.1.tar.xz
+        URL ${URL_GMP}
         SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/${DIRLIBGMP}
         CONFIGURE_COMMAND cd <SOURCE_DIR> &&
-            ./configure --disable-shared --enable-cxx --with-pic
+            ./configure --disable-shared --enable-cxx --with-pic "CFLAGS=-O -fstack-protector-strong -fstack-protector-all -D_FORTIFY_SOURCE=2" "LDFLAGS=-Wl,-z,max-page-size=16384"
         BUILD_COMMAND make -C <SOURCE_DIR>
         INSTALL_COMMAND ""
         BUILD_BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/${DIRLIBGMP}/.libs/libgmp.a ${CMAKE_CURRENT_BINARY_DIR}/${DIRLIBGMP}/.libs/libgmpxx.a

@@ -26,7 +26,9 @@ bool ValidateSigningKeysAndCacheHS(const OctetString& identifier, std::string co
 
     MIKEY_SAKKE_LOGD("PVT %s", PVT.translate().c_str());
     MIKEY_SAKKE_LOGD("KPAK %s", KPAK.translate().c_str());
+    #ifdef SHOW_SECRETS_IN_LOGS_DEV_ONLY
     MIKEY_SAKKE_LOGD("SSK %s", SSK.translate().c_str());
+    #endif /* SHOW_SECRETS_IN_LOGS_DEV_ONLY */
 
     if (KPAK.octets[0] != 0x04 || PVT.octets[0] != 0x04) {
         MIKEY_SAKKE_LOGE("Key invalid format. Must be uncompressed data.");
@@ -49,7 +51,11 @@ bool ValidateSigningKeysAndCacheHS(const OctetString& identifier, std::string co
         SHA256Digest HS;
         HS.digest(E->base_point_octets());
         HS.digest(KPAK);
+#ifdef USE_IDENTIFIER_AS_HEXSTRING
         HS.digest(identifier.translate());
+#else
+        HS.digest(identifier.raw(), identifier.size());
+#endif
         HS.digest(PVT);
         HS.complete();
 
@@ -88,6 +94,7 @@ bool Sign(uint8_t const* msg, size_t msg_len, uint8_t* sign_out, size_t sign_len
     // RFC6507 5.2.1
     //
     OctetString const& PVT = keys->GetPublicKey(identifier_str, "PVT");
+    MIKEY_SAKKE_LOGD("Sign ECCSI with identifier<%s> and PVT<%s>", identifier_str.c_str(), PVT.translate().c_str());
 
     if (PVT.octets[0] != 0x04) {
         MIKEY_SAKKE_LOGE("Key invalid format. Must be uncompressed data.");
@@ -113,7 +120,12 @@ bool Sign(uint8_t const* msg, size_t msg_len, uint8_t* sign_out, size_t sign_len
     for (;;) {
         // 1) Choose a random (ephemeral) non-zero value j in F_q
         //
+        MIKEY_SAKKE_LOGD("== Signature Step 1/");
         randomize(rand.raw(), rand.size());
+        #ifdef SHOW_SECRETS_IN_LOGS_DEV_ONLY
+        MIKEY_SAKKE_LOGD("1. Rand size: %d", rand.size());
+        MIKEY_SAKKE_LOGD("1. Random is: %s", rand.translate().c_str());
+        #endif /* SHOW_SECRETS_IN_LOGS_DEV_ONLY */
         to_bigint_ssl(j, rand);
         BN_mod(j, j, q, scratch);
 
@@ -121,6 +133,7 @@ bool Sign(uint8_t const* msg, size_t msg_len, uint8_t* sign_out, size_t sign_len
             continue;
 
         // 2) Compute J = (Jx,Jy) = [j]G and assign Jx to r
+        MIKEY_SAKKE_LOGD("== Signature Step 2/");
         {
             ECC::Point<bigint_ssl> J(E);
             auto const*            ecg_E = E->read_internal<EC_GROUP>();
@@ -128,18 +141,36 @@ bool Sign(uint8_t const* msg, size_t msg_len, uint8_t* sign_out, size_t sign_len
             EC_POINT_mul(ecg_E, J.readwrite_internal<EC_POINT>(), nullptr, ecp_G, j, scratch);
 
             r = J.x();
+
+            // Addition of RBY for Softil test
+            //MIKEY_SAKKE_LOGI("2. Reseting r");
+            //OctetString r_bytes = OctetString::skipws("1500B02FE37B92B94612F5665ABEF81FB8C5072B49D7793622A9D57761D665D9");
+            //r.reset();
+            //MIKEY_SAKKE_LOGI("2. Reassigning r");
+            //to_bigint_ssl(r, r_bytes);
+            #ifdef SHOW_SECRETS_IN_LOGS_DEV_ONLY
+            MIKEY_SAKKE_LOGD("2. r is: %s", as_octet_string(r).translate().c_str());
+            #endif /* SHOW_SECRETS_IN_LOGS_DEV_ONLY */
         }
 
         // 3) Compute HE = hash( HS || r || M )
         //
+        MIKEY_SAKKE_LOGD("== Signature Step 3/");
         SHA256Digest HE;
+        MIKEY_SAKKE_LOGD("3. HS is: %s", keys->GetPublicKey(identifier_str, "HS").translate().c_str());
         HE.digest(keys->GetPublicKey(identifier_str, "HS"));
         HE.digest(as_octet_string(r));
         HE.digest(msg, msg_len);
         HE.complete();
 
+        MIKEY_SAKKE_LOGD("3. HE is %s" , HE.str().translate().c_str());
+
         // 4) Verify that HE + r * SSK is non-zero (mod q)
         //
+        MIKEY_SAKKE_LOGD("== Signature Step 4/");
+        #ifdef SHOW_SECRETS_IN_LOGS_DEV_ONLY
+        MIKEY_SAKKE_LOGD("3. SSK is: %s", keys->GetPrivateKey(identifier_str, "SSK").translate().c_str());
+        #endif
         BN_mod_mul(s, r, as_bigint_ssl(keys->GetPrivateKey(identifier_str, "SSK")), q, scratch);
         BN_mod_add(s, s, as_bigint_ssl(HE.str()), q, scratch);
 
@@ -157,21 +188,25 @@ bool Sign(uint8_t const* msg, size_t msg_len, uint8_t* sign_out, size_t sign_len
     // 5) Compute s' = ( (( HE + r * SSK )^-1) * j ) (mod q)
     //    and erase ephemeral j
     //
+    MIKEY_SAKKE_LOGD("== Signature Step 5/");
     BN_mod_inverse(s, s, q, scratch);
     BN_mod_mul(s, s, j, q, scratch);
     BN_zero(j);
 
     // 6) Set s = q - s' if octet_count(s) > N
     //
+    MIKEY_SAKKE_LOGD("== Signature Step 6/");
     if (BN_num_bytes(s) > eccsi_6509_param_set().hash_len)
         BN_sub(s, q, s);
 
     // 7) Output the signature SIG = ( r || s || PVT )
     //
+    MIKEY_SAKKE_LOGD("== Signature Step 7/");
     OctetString SIG; // TODO: use a mutable range over output buffer for efficiency
-
+    MIKEY_SAKKE_LOGD("7. s is: %s", as_octet_string(s).translate().c_str());
     OctetString r_os             = as_octet_string(r);
     OctetString s_os             = as_octet_string(s);
+
     size_t      r_leading_zeroes = eccsi_6509_param_set().hash_len - BN_num_bytes(r);
     size_t      s_leading_zeroes = eccsi_6509_param_set().hash_len - BN_num_bytes(s);
 
@@ -205,6 +240,7 @@ OctetString Sign(uint8_t const* msg, size_t msg_len, OctetString const& identifi
 bool Verify(uint8_t const* msg, size_t msg_len, uint8_t const* sign, size_t sign_len, const OctetString& identifier,
             std::string const& community, MikeySakkeKMS::KeyAccessPtr const& keys) {
     size_t hash_len = eccsi_6509_param_set().hash_len;
+    MIKEY_SAKKE_LOGD("Verifying ECCSI signature with senderId(%s) and senderCommunity(%s)", identifier.translate().c_str(), community.c_str());
 
     // No value in continuing if signature is not the correct size; two
     // N-octet integers r and s, plus an elliptical curve point PVT
@@ -250,7 +286,11 @@ bool Verify(uint8_t const* msg, size_t msg_len, uint8_t const* sign, size_t sign
         SHA256Digest HS;
         HS.digest(E->base_point_octets());
         HS.digest(KPAK);
+#ifdef USE_IDENTIFIER_AS_HEXSTRING
         HS.digest(identifier.translate());
+#else
+        HS.digest(identifier.raw(), identifier.size());
+#endif
         HS.digest(PVT_begin, PVT_len);
         HS.complete();
 

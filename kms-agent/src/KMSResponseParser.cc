@@ -119,7 +119,9 @@ bool kmsParseResponse(xmlNodePtr root_element, struct kms_response* response, bo
 
 bool kmsInitParseResponse(const char* ptr, size_t size, init_response_t* resp, bool is_secured) {
     std::string resp_str(ptr, size);
+#ifdef SHOW_SECRETS_IN_LOGS_DEV_ONLY
     MIKEY_SAKKE_LOGD("Parsing following as init response : \n%s", resp_str.c_str());
+#endif /* SHOW_SECRETS_IN_LOGS_DEV_ONLY */
 
     xmlDocPtr doc = xmlParseMemory(resp_str.c_str(), resp_str.length());
     if (!doc) {
@@ -215,7 +217,9 @@ bool kmsInitParseResponse(const char* ptr, size_t size, init_response_t* resp, b
 
 bool kmsKeyProvParseResponse(const char* ptr, size_t size, key_prov_response_t* resp, bool is_secured) {
     std::string resp_str(ptr, size);
+#ifdef SHOW_SECRETS_IN_LOGS_DEV_ONLY
     MIKEY_SAKKE_LOGD("Parsing following as key prov response : \n%s", resp_str.c_str());
+#endif /* SHOW_SECRETS_IN_LOGS_DEV_ONLY */
 
     xmlDocPtr doc = xmlParseMemory(resp_str.c_str(), resp_str.length());
     if (!doc) {

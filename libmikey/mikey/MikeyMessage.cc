@@ -56,11 +56,36 @@
 #define GUESSED_SIGNATURE_LENGTH 128
 
 using namespace std;
+using libmutil::itoa;
 
 MikeyPayloads::MikeyPayloads(): compiled(false), rawData(nullptr) {}
 
 MikeyPayloads::MikeyPayloads(int firstPayloadType, uint8_t* message, int lengthLimit): compiled(true), rawData(message) {
     parse(firstPayloadType, message, lengthLimit, payloads);
+}
+
+const char* MikeyPayloads::payloadTypeToString(int e) {
+    switch (e)
+    {
+        case MIKEYPAYLOAD_HDR_PAYLOAD_TYPE:     return "HDR";
+        case MIKEYPAYLOAD_KEMAC_PAYLOAD_TYPE:   return "KEMAC";
+        case MIKEYPAYLOAD_PKE_PAYLOAD_TYPE:     return "PKE";
+        case MIKEYPAYLOAD_DH_PAYLOAD_TYPE:      return "DH";
+        case MIKEYPAYLOAD_SIGN_PAYLOAD_TYPE:    return "SIGN";
+        case MIKEYPAYLOAD_T_PAYLOAD_TYPE:       return "T";
+        case MIKEYPAYLOAD_ID_PAYLOAD_TYPE:      return "ID";
+        case MIKEYPAYLOAD_IDR_PAYLOAD_TYPE:     return "IDR";
+        case MIKEYPAYLOAD_CHASH_PAYLOAD_TYPE:   return "CHASH";
+        case MIKEYPAYLOAD_V_PAYLOAD_TYPE:       return "V";
+        case MIKEYPAYLOAD_SP_PAYLOAD_TYPE:      return "SP";
+        case MIKEYPAYLOAD_RAND_PAYLOAD_TYPE:    return "RAND";
+        case MIKEYPAYLOAD_ERR_PAYLOAD_TYPE:     return "ERR";
+        case MIKEYPAYLOAD_KEYDATA_PAYLOAD_TYPE: return "KEYDATA";
+        case MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE:   return "GE";
+        case MIKEYPAYLOAD_SAKKE_PAYLOAD_TYPE:   return "SAKKE";
+        case MIKEYPAYLOAD_LAST_PAYLOAD:         return "LAST";
+        default:                                return "Unknown";
+    }
 }
 
 /*
@@ -330,11 +355,13 @@ void MikeyPayloads::setRawMessageData(uint8_t* data) {
 }
 
 string MikeyPayloads::debugDump() {
-    string                              ret = "";
+    string                              ret = "\n== BEGIN MikeyPayloads ==\n";
     list<MRef<MikeyPayload*>>::iterator i;
+
     for (i = payloads.begin(); i != payloads.end(); ++i) {
-        ret = ret + "\n\n" + (*i)->debugDump();
+        ret = ret + "\n\n["+payloadTypeToString((*i)->payloadType())+":(" + itoa((*i)->payloadType()) + ")]" + (*i)->debugDump();
     }
+    ret += "\n== BEGIN MikeyPayloads ==\n";
 
     return ret;
 }

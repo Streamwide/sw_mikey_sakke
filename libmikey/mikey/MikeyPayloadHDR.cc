@@ -148,9 +148,14 @@ string MikeyPayloadHDR::debugDump() {
         case HDR_DATA_TYPE_RSA_R_RESP:
             ret = ret + "<RSA-R R_MSG>";
             break;
+        case HDR_DATA_TYPE_SAKKE_INIT:
+            ret = ret + "<MIKEY-SAKKE I_MSG>";
+            break;
         case HDR_DATA_TYPE_ERROR:
             ret = ret + "<Error>";
             break;
+        default:
+            ret = ret + "UNKNOWN(" + itoa(dataTypeValue) + ")";
     }
 
     ret += " next_payload=" + itoa(nextPayloadType());

@@ -75,41 +75,53 @@ void mikey_sakke_log_set_func(mikey_sakke_log_func_t* func);
 #define MIKEY_SAKKE_LOG_SET_LEVEL(level_str) libmutil::mikey_sakke_log_set_level(libmutil::mikey_sakke_log_level(level_str))
 #define MIKEY_SAKKE_LOG_SET_SINK(path, path_len)
 
+#ifndef MIKEY_SAKKE_LOGV
 #define MIKEY_SAKKE_LOGV(...)                                                                                                              \
     if (mikey_sakke_should_log(libmutil::mikey_sakke_log_level_e::MIKEY_SAKKE_LOG_LEVEL_VRB)) {                                            \
         mikey_sakke_log_printf(libmutil::mikey_sakke_log_level_e::MIKEY_SAKKE_LOG_LEVEL_VRB, __FILE__, __LINE__, __FUNCTION__,             \
                                __VA_ARGS__);                                                                                               \
     }
+#endif
 
+#ifndef MIKEY_SAKKE_LOGD
 #define MIKEY_SAKKE_LOGD(...)                                                                                                              \
     if (mikey_sakke_should_log(libmutil::mikey_sakke_log_level_e::MIKEY_SAKKE_LOG_LEVEL_DBG)) {                                            \
         mikey_sakke_log_printf(libmutil::mikey_sakke_log_level_e::MIKEY_SAKKE_LOG_LEVEL_DBG, __FILE__, __LINE__, __FUNCTION__,             \
                                __VA_ARGS__);                                                                                               \
     }
+#endif
 
+#ifndef MIKEY_SAKKE_LOGN
 #define MIKEY_SAKKE_LOGN(...)                                                                                                              \
     if (mikey_sakke_should_log(libmutil::mikey_sakke_log_level_e::MIKEY_SAKKE_LOG_LEVEL_NET)) {                                            \
         mikey_sakke_log_printf(libmutil::mikey_sakke_log_level_e::MIKEY_SAKKE_LOG_LEVEL_NET, __FILE__, __LINE__, __FUNCTION__,             \
                                __VA_ARGS__);                                                                                               \
     }
+#endif
 
+#ifndef MIKEY_SAKKE_LOGI
 #define MIKEY_SAKKE_LOGI(...)                                                                                                              \
     if (mikey_sakke_should_log(libmutil::mikey_sakke_log_level_e::MIKEY_SAKKE_LOG_LEVEL_IFO)) {                                            \
         mikey_sakke_log_printf(libmutil::mikey_sakke_log_level_e::MIKEY_SAKKE_LOG_LEVEL_IFO, __FILE__, __LINE__, __FUNCTION__,             \
                                __VA_ARGS__);                                                                                               \
     }
+#endif
 
+#ifndef MIKEY_SAKKE_LOGW
 #define MIKEY_SAKKE_LOGW(...)                                                                                                              \
     if (mikey_sakke_should_log(libmutil::mikey_sakke_log_level_e::MIKEY_SAKKE_LOG_LEVEL_WNG)) {                                            \
         mikey_sakke_log_printf(libmutil::mikey_sakke_log_level_e::MIKEY_SAKKE_LOG_LEVEL_WNG, __FILE__, __LINE__, __FUNCTION__,             \
                                __VA_ARGS__);                                                                                               \
     }
+#endif
 
+#ifndef MIKEY_SAKKE_LOGE
 #define MIKEY_SAKKE_LOGE(...)                                                                                                              \
     if (mikey_sakke_should_log(libmutil::mikey_sakke_log_level_e::MIKEY_SAKKE_LOG_LEVEL_ERR)) {                                            \
         mikey_sakke_log_printf(libmutil::mikey_sakke_log_level_e::MIKEY_SAKKE_LOG_LEVEL_ERR, __FILE__, __LINE__, __FUNCTION__,             \
                                __VA_ARGS__);                                                                                               \
     }
+#endif
 
 #endif // USE_SPDLOG
 

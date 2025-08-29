@@ -67,6 +67,7 @@ class LIBMIKEY_API Mikey : public MObject {
 
     /* Key management handling */
     // Initiator methods
+    bool displayIMessageInfo(const std::string& message);
     bool getClearInfo(const std::string& message, mikey_clear_info_t& ret);
     std::string initiatorCreate(int kaType, const std::string& peerUri = "", struct key_agreement_params* params = nullptr);
     bool        initiatorAuthenticate(std::string message);

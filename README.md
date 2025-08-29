@@ -38,6 +38,10 @@ cmake --build --preset dev
 ```
 
 ## Tests
+WARNING: Asan have an incompatibility with ubuntu-22.04, fix it with the following command (see https://github.com/actions/runner/issues/3481):
+```
+$ sudo sysctl vm.mmap_rnd_bits=28
+```
 ```
 ctest --preset dev
 ```

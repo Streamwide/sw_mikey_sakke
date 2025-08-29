@@ -61,6 +61,7 @@ class LIBMIKEY_API MikeyPayloadID : public MikeyPayload {
 
     void        writeData(uint8_t* start, int expectedLength) override;
     int         length() const override;
+    const char* RoleTypeToString(int e);
     std::string debugDump() override;
 
     MikeyPayloadIDType idType() const;

@@ -85,6 +85,8 @@ class LIBMIKEY_API MikeyPayloads : public MObject {
     MikeyPayloads(int firstPayloadType, uint8_t* message, int lengthLimit);
     ~MikeyPayloads() override;
 
+    const char* payloadTypeToString(int e);
+
     void addPayload(MRef<MikeyPayload*> payload);
     void operator+=(MRef<MikeyPayload*> payload);
 

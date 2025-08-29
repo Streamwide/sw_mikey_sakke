@@ -1,18 +1,26 @@
+#include "keymaterials.h"
 #include "libmutil/Logger.h"
 #include "mikeysakke4c.h"
 #include "gtest/gtest.h"
+#include <cinttypes>
+#include <libmikey/Mikey.h>
 #include <sstream>
 #include <util/octet-string.h>
+
+void stw_log(int log_level, const char* filename, unsigned line, const char* function, char* thread_name, long thread_id, const char* log) {
+    fprintf(stderr, "[%s:%d][%s] %s\n", filename, line, function, log);
+}
 
 // Developper note : since to generate I-Messages, we will mainly be using the C API, the unit test will be done using that same API
 
 TEST(test_i_message, i_message_gmk) {
+    //mikey_sakke_set_log_func(stw_log);
     mikey_sakke_set_log_level("debug");
 
     const char community[]     = "streamwide.com";
-    uint8_t*   gmk             = mikey_sakke_gen_key();
+    uint8_t*   gmk             = mikey_sakke_gen_key(16);
     uint8_t*   gmk_id          = mikey_sakke_gen_key_id(GMK);
-    const char kms_uri[]       = "0.0.0.0:8080";
+    const char kms_uri[]       = STW_KMS_URI;
     uint32_t   user_key_period = 2592000;
     uint32_t   user_key_offset = 0;
     
@@ -36,11 +44,11 @@ TEST(test_i_message, i_message_gmk) {
     mikey_sakke_add_community(gms_keys, community);
 
     // clang-format off
-    mikey_sakke_provision_key_material(gms_keys, community, "KPAK", "0450d4670bde75244f28d2838a0d25558a7a72686d4522d4c8273fb6442aebfa93dbdd37551afd263b5dfd617f3960c65a8c298850ff99f20366dce7d4367217f4", false);
-    mikey_sakke_provision_key_material(gms_keys, community, "Z", "045958EF1B1679BF099B3A030DF255AA6A23C1D8F143D4D23F753E69BD27A832F38CB4AD53DDEF4260B0FE8BB45C4C1FF510EFFE300367A37B61F701D914AEF09724825FA0707D61A6DFF4FBD7273566CDDE352A0B04B7C16A78309BE640697DE747613A5FC195E8B9F328852A579DB8F99B1D0034479EA9C5595F47C4B2F54FF21508D37514DCF7A8E143A6058C09A6BF2C9858CA37C258065AE6BF7532BC8B5B63383866E0753C5AC0E72709F8445F2E6178E065857E0EDA10F68206B63505ED87E534FB2831FF957FB7DC619DAE61301EEACC2FDA3680EA4999258A833CEA8FC67C6D19487FB449059F26CC8AAB655AB58B7CC796E24E9A394095754F5F8BAE", false);
-    mikey_sakke_provision_key_material(gms_keys, gms_id, "RSK", "04991dd025c1bbd553f8bb35e3fd730747116bfd5fce8d952a680a7ee33c81a9793fb109f2ea33804e8e248d56c436c903ccef65b96abae7e555bea4c6f6929ffc188f179f28dfd0fc0fac419871495bfa35cd7f7cb9a8c91a566ae4d359a0efafd53357618f87ce53cefa5a5906e53e8d0864140fb1ad9ee097214780b63aa1084e2da4b713ccd42ec7abf967dce69108a4d8ad173553080e8c5972cf9a9d00662b080fbbe4b13dfa46f1ee34e6fbc3eed7c47a9e7382c3f456bdb009f71305f0fb7e5fee32d0800707a5a1673271f1234f1c4d4fda52651ada3e292c519d998a9d2463e976df0c9f9c040f2716e2f51b7163b2f9986b176359a70467870c1f04", true);
-    mikey_sakke_provision_key_material(gms_keys, gms_id, "SSK", "c9de2281bb7e7455cc63c95ebb0d576dbfd998b940d9eac71f3915689b83abec", true);
-    mikey_sakke_provision_key_material(gms_keys, gms_id, "PVT", "049e8c279b4c673515032ac1e8d4ba5e91d3e38fbc9e96da577568cec7d46cbeb1edc62a9bc0bfbec07d832c8a771103d5f00717eadcaf6a420a9d1cdf82e726ec", false);
+    mikey_sakke_provision_key_material(gms_keys, community, "KPAK", STW_KEYMAT_KPAK, false);
+    mikey_sakke_provision_key_material(gms_keys, community, "Z", STW_KEYMAT_Z, false);
+    mikey_sakke_provision_key_material(gms_keys, gms_id, "RSK", STW_KEYMAT_RSK_GMS, true);
+    mikey_sakke_provision_key_material(gms_keys, gms_id, "SSK", STW_KEYMAT_SSK_GMS, true);
+    mikey_sakke_provision_key_material(gms_keys, gms_id, "PVT", STW_KEYMAT_PVT_GMS, false);
     // clang-format on
     ASSERT_TRUE(mikey_sakke_validate_signing_keys(gms_id, gms_keys));
 
@@ -56,7 +64,7 @@ TEST(test_i_message, i_message_gmk) {
         ss.str(std::string());
         ss.clear();
         ss << key_period_no;
-        mikey_sakke_set_public_parameter(gms_keys, community, "KeyPeriodNo", ss.str().c_str());
+        mikey_sakke_set_public_parameter(gms_keys, community, "UserKeyPeriodNoSet", ss.str().c_str());
         mikey_sakke_set_public_parameter(gms_keys, community, "KmsUri", kms_uri);
         mikey_sakke_set_public_parameter(gms_keys, community, "SakkeSet", "1");
     }
@@ -70,11 +78,12 @@ TEST(test_i_message, i_message_gmk) {
     mikey_sakke_add_community(alice_keys, community);
 
     // clang-format off
-    mikey_sakke_provision_key_material(alice_keys, community, "KPAK", "0450d4670bde75244f28d2838a0d25558a7a72686d4522d4c8273fb6442aebfa93dbdd37551afd263b5dfd617f3960c65a8c298850ff99f20366dce7d4367217f4", false);
-    mikey_sakke_provision_key_material(alice_keys, community, "Z", "045958EF1B1679BF099B3A030DF255AA6A23C1D8F143D4D23F753E69BD27A832F38CB4AD53DDEF4260B0FE8BB45C4C1FF510EFFE300367A37B61F701D914AEF09724825FA0707D61A6DFF4FBD7273566CDDE352A0B04B7C16A78309BE640697DE747613A5FC195E8B9F328852A579DB8F99B1D0034479EA9C5595F47C4B2F54FF21508D37514DCF7A8E143A6058C09A6BF2C9858CA37C258065AE6BF7532BC8B5B63383866E0753C5AC0E72709F8445F2E6178E065857E0EDA10F68206B63505ED87E534FB2831FF957FB7DC619DAE61301EEACC2FDA3680EA4999258A833CEA8FC67C6D19487FB449059F26CC8AAB655AB58B7CC796E24E9A394095754F5F8BAE", false);
-    mikey_sakke_provision_key_material(alice_keys, alice_id, "RSK", "04991dd025c1bbd553f8bb35e3fd730747116bfd5fce8d952a680a7ee33c81a9793fb109f2ea33804e8e248d56c436c903ccef65b96abae7e555bea4c6f6929ffc188f179f28dfd0fc0fac419871495bfa35cd7f7cb9a8c91a566ae4d359a0efafd53357618f87ce53cefa5a5906e53e8d0864140fb1ad9ee097214780b63aa1084e2da4b713ccd42ec7abf967dce69108a4d8ad173553080e8c5972cf9a9d00662b080fbbe4b13dfa46f1ee34e6fbc3eed7c47a9e7382c3f456bdb009f71305f0fb7e5fee32d0800707a5a1673271f1234f1c4d4fda52651ada3e292c519d998a9d2463e976df0c9f9c040f2716e2f51b7163b2f9986b176359a70467870c1f04", true);
-    mikey_sakke_provision_key_material(alice_keys, alice_id, "SSK", "48bf63b2c12c2052181d7aed563926a1774591aa804a662e77ac6c2450e19c8a", true);
-    mikey_sakke_provision_key_material(alice_keys, alice_id, "PVT", "04e71041fdee8964bd6e5ca83d495c440c3115ea0361da28814f3e097e0c16d83a7da45c972eded68a939390367bb4531e4ca18177912adcafe6b3d39b97494855", false);
+
+    mikey_sakke_provision_key_material(alice_keys, community, "KPAK", STW_KEYMAT_KPAK, false);
+    mikey_sakke_provision_key_material(alice_keys, community, "Z", STW_KEYMAT_Z, false);
+    mikey_sakke_provision_key_material(alice_keys, alice_id, "RSK", STW_KEYMAT_RSK_GMS, true);
+    mikey_sakke_provision_key_material(alice_keys, alice_id, "SSK", STW_KEYMAT_SSK_GMS, true);
+    mikey_sakke_provision_key_material(alice_keys, alice_id, "PVT", STW_KEYMAT_PVT_GMS, false);
     // clang-format on
 
     // Set community params in Alice keystore
@@ -89,7 +98,7 @@ TEST(test_i_message, i_message_gmk) {
         ss.str(std::string());
         ss.clear();
         ss << key_period_no;
-        mikey_sakke_set_public_parameter(alice_keys, community, "KeyPeriodNo", ss.str().c_str());
+        mikey_sakke_set_public_parameter(alice_keys, community, "UserKeyPeriodNoSet", ss.str().c_str());
         mikey_sakke_set_public_parameter(alice_keys, community, "KmsUri", kms_uri);
         mikey_sakke_set_public_parameter(alice_keys, community, "SakkeSet", "1");
     }
@@ -105,11 +114,11 @@ TEST(test_i_message, i_message_gmk) {
     mikey_sakke_add_community(bob_keys, community);
 
     // clang-format off
-    mikey_sakke_provision_key_material(bob_keys, community, "KPAK", "0450d4670bde75244f28d2838a0d25558a7a72686d4522d4c8273fb6442aebfa93dbdd37551afd263b5dfd617f3960c65a8c298850ff99f20366dce7d4367217f4", false);
-    mikey_sakke_provision_key_material(bob_keys, community, "Z", "045958EF1B1679BF099B3A030DF255AA6A23C1D8F143D4D23F753E69BD27A832F38CB4AD53DDEF4260B0FE8BB45C4C1FF510EFFE300367A37B61F701D914AEF09724825FA0707D61A6DFF4FBD7273566CDDE352A0B04B7C16A78309BE640697DE747613A5FC195E8B9F328852A579DB8F99B1D0034479EA9C5595F47C4B2F54FF21508D37514DCF7A8E143A6058C09A6BF2C9858CA37C258065AE6BF7532BC8B5B63383866E0753C5AC0E72709F8445F2E6178E065857E0EDA10F68206B63505ED87E534FB2831FF957FB7DC619DAE61301EEACC2FDA3680EA4999258A833CEA8FC67C6D19487FB449059F26CC8AAB655AB58B7CC796E24E9A394095754F5F8BAE", false);
-    mikey_sakke_provision_key_material(bob_keys, bob_id, "RSK", "04991dd025c1bbd553f8bb35e3fd730747116bfd5fce8d952a680a7ee33c81a9793fb109f2ea33804e8e248d56c436c903ccef65b96abae7e555bea4c6f6929ffc188f179f28dfd0fc0fac419871495bfa35cd7f7cb9a8c91a566ae4d359a0efafd53357618f87ce53cefa5a5906e53e8d0864140fb1ad9ee097214780b63aa1084e2da4b713ccd42ec7abf967dce69108a4d8ad173553080e8c5972cf9a9d00662b080fbbe4b13dfa46f1ee34e6fbc3eed7c47a9e7382c3f456bdb009f71305f0fb7e5fee32d0800707a5a1673271f1234f1c4d4fda52651ada3e292c519d998a9d2463e976df0c9f9c040f2716e2f51b7163b2f9986b176359a70467870c1f04", true);
-    mikey_sakke_provision_key_material(bob_keys, bob_id, "SSK", "BD25489C01828D48D7C84A71C2B7F26D9032C1FD0CC426E65DF1AF92C79E30C2", true);
-    mikey_sakke_provision_key_material(bob_keys, bob_id, "PVT", "04943539DC816FBD214BDAE6D6F16D1665F5B8307F320F4515BBA13A816F463711036E7C65340136C025673E0CC0C7EFF9C0C3D344C9C3FDC239C75978360D6BB3", false);
+    mikey_sakke_provision_key_material(bob_keys, community, "KPAK", STW_KEYMAT_KPAK, false);
+    mikey_sakke_provision_key_material(bob_keys, community, "Z", STW_KEYMAT_Z, false);
+    mikey_sakke_provision_key_material(bob_keys, bob_id, "RSK", STW_KEYMAT_RSK_GMS, true);
+    mikey_sakke_provision_key_material(bob_keys, bob_id, "SSK", STW_KEYMAT_SSK_GMS, true);
+    mikey_sakke_provision_key_material(bob_keys, bob_id, "PVT", STW_KEYMAT_PVT_GMS, false);
     // clang-format on
 
     // Set community params in Bob keystore
@@ -124,7 +133,7 @@ TEST(test_i_message, i_message_gmk) {
         ss.str(std::string());
         ss.clear();
         ss << key_period_no;
-        mikey_sakke_set_public_parameter(bob_keys, community, "KeyPeriodNo", ss.str().c_str());
+        mikey_sakke_set_public_parameter(bob_keys, community, "UserKeyPeriodNoSet", ss.str().c_str());
         mikey_sakke_set_public_parameter(bob_keys, community, "KmsUri", kms_uri);
         mikey_sakke_set_public_parameter(bob_keys, community, "SakkeSet", "1");
     }
@@ -234,10 +243,10 @@ TEST(test_i_message, i_message_csk) {
     mikey_sakke_set_log_level("debug");
 
     const char community[]     = "streamwide.com";
-    uint8_t*   csk             = mikey_sakke_gen_key();
+    uint8_t*   csk             = mikey_sakke_gen_key(16);
     uint8_t*   csk_id          = mikey_sakke_gen_key_id(CSK);
-    uint8_t*   csk_rand        = mikey_sakke_gen_key();
-    const char kms_uri[]       = "0.0.0.0:8080";
+    uint8_t*   csk_rand        = mikey_sakke_gen_key(16);
+    const char kms_uri[]       = STW_KMS_URI;
     uint32_t   user_key_period = 2592000;
     uint32_t   user_key_offset = 0;
     // DO NOT CHANGE THE KEY PERIOD NO : KEYS WILL VALIDATE ONLY FOR THIS PERIOD
@@ -260,11 +269,11 @@ TEST(test_i_message, i_message_csk) {
     mikey_sakke_add_community(alice_keys, community);
 
     // clang-format off
-    mikey_sakke_provision_key_material(alice_keys, community, "KPAK", "0450d4670bde75244f28d2838a0d25558a7a72686d4522d4c8273fb6442aebfa93dbdd37551afd263b5dfd617f3960c65a8c298850ff99f20366dce7d4367217f4", false);
-    mikey_sakke_provision_key_material(alice_keys, community, "Z", "045958EF1B1679BF099B3A030DF255AA6A23C1D8F143D4D23F753E69BD27A832F38CB4AD53DDEF4260B0FE8BB45C4C1FF510EFFE300367A37B61F701D914AEF09724825FA0707D61A6DFF4FBD7273566CDDE352A0B04B7C16A78309BE640697DE747613A5FC195E8B9F328852A579DB8F99B1D0034479EA9C5595F47C4B2F54FF21508D37514DCF7A8E143A6058C09A6BF2C9858CA37C258065AE6BF7532BC8B5B63383866E0753C5AC0E72709F8445F2E6178E065857E0EDA10F68206B63505ED87E534FB2831FF957FB7DC619DAE61301EEACC2FDA3680EA4999258A833CEA8FC67C6D19487FB449059F26CC8AAB655AB58B7CC796E24E9A394095754F5F8BAE", false);
-    mikey_sakke_provision_key_material(alice_keys, alice_id, "RSK", "04991dd025c1bbd553f8bb35e3fd730747116bfd5fce8d952a680a7ee33c81a9793fb109f2ea33804e8e248d56c436c903ccef65b96abae7e555bea4c6f6929ffc188f179f28dfd0fc0fac419871495bfa35cd7f7cb9a8c91a566ae4d359a0efafd53357618f87ce53cefa5a5906e53e8d0864140fb1ad9ee097214780b63aa1084e2da4b713ccd42ec7abf967dce69108a4d8ad173553080e8c5972cf9a9d00662b080fbbe4b13dfa46f1ee34e6fbc3eed7c47a9e7382c3f456bdb009f71305f0fb7e5fee32d0800707a5a1673271f1234f1c4d4fda52651ada3e292c519d998a9d2463e976df0c9f9c040f2716e2f51b7163b2f9986b176359a70467870c1f04", true);
-    mikey_sakke_provision_key_material(alice_keys, alice_id, "SSK", "c9de2281bb7e7455cc63c95ebb0d576dbfd998b940d9eac71f3915689b83abec", true);
-    mikey_sakke_provision_key_material(alice_keys, alice_id, "PVT", "049e8c279b4c673515032ac1e8d4ba5e91d3e38fbc9e96da577568cec7d46cbeb1edc62a9bc0bfbec07d832c8a771103d5f00717eadcaf6a420a9d1cdf82e726ec", false);
+    mikey_sakke_provision_key_material(alice_keys, community, "KPAK", STW_KEYMAT_KPAK, false);
+    mikey_sakke_provision_key_material(alice_keys, community, "Z", STW_KEYMAT_Z, false);
+    mikey_sakke_provision_key_material(alice_keys, alice_id, "RSK", STW_KEYMAT_RSK_GMS, true);
+    mikey_sakke_provision_key_material(alice_keys, alice_id, "SSK", STW_KEYMAT_SSK_GMS, true);
+    mikey_sakke_provision_key_material(alice_keys, alice_id, "PVT", STW_KEYMAT_PVT_GMS, false);
     // clang-format on
 
     ASSERT_TRUE(mikey_sakke_validate_signing_keys(alice_id, alice_keys));
@@ -280,7 +289,7 @@ TEST(test_i_message, i_message_csk) {
         ss.str(std::string());
         ss.clear();
         ss << key_period_no;
-        mikey_sakke_set_public_parameter(alice_keys, community, "KeyPeriodNo", ss.str().c_str());
+        mikey_sakke_set_public_parameter(alice_keys, community, "UserKeyPeriodNoSet", ss.str().c_str());
         mikey_sakke_set_public_parameter(alice_keys, community, "KmsUri", kms_uri);
         mikey_sakke_set_public_parameter(alice_keys, community, "SakkeSet", "1");
     }
@@ -294,11 +303,11 @@ TEST(test_i_message, i_message_csk) {
     mikey_sakke_add_community(gms_keys, community);
 
     // clang-format off
-    mikey_sakke_provision_key_material(gms_keys, community, "KPAK", "0450d4670bde75244f28d2838a0d25558a7a72686d4522d4c8273fb6442aebfa93dbdd37551afd263b5dfd617f3960c65a8c298850ff99f20366dce7d4367217f4", false);
-    mikey_sakke_provision_key_material(gms_keys, community, "Z", "045958EF1B1679BF099B3A030DF255AA6A23C1D8F143D4D23F753E69BD27A832F38CB4AD53DDEF4260B0FE8BB45C4C1FF510EFFE300367A37B61F701D914AEF09724825FA0707D61A6DFF4FBD7273566CDDE352A0B04B7C16A78309BE640697DE747613A5FC195E8B9F328852A579DB8F99B1D0034479EA9C5595F47C4B2F54FF21508D37514DCF7A8E143A6058C09A6BF2C9858CA37C258065AE6BF7532BC8B5B63383866E0753C5AC0E72709F8445F2E6178E065857E0EDA10F68206B63505ED87E534FB2831FF957FB7DC619DAE61301EEACC2FDA3680EA4999258A833CEA8FC67C6D19487FB449059F26CC8AAB655AB58B7CC796E24E9A394095754F5F8BAE", false);
-    mikey_sakke_provision_key_material(gms_keys, gms_id, "RSK", "04991dd025c1bbd553f8bb35e3fd730747116bfd5fce8d952a680a7ee33c81a9793fb109f2ea33804e8e248d56c436c903ccef65b96abae7e555bea4c6f6929ffc188f179f28dfd0fc0fac419871495bfa35cd7f7cb9a8c91a566ae4d359a0efafd53357618f87ce53cefa5a5906e53e8d0864140fb1ad9ee097214780b63aa1084e2da4b713ccd42ec7abf967dce69108a4d8ad173553080e8c5972cf9a9d00662b080fbbe4b13dfa46f1ee34e6fbc3eed7c47a9e7382c3f456bdb009f71305f0fb7e5fee32d0800707a5a1673271f1234f1c4d4fda52651ada3e292c519d998a9d2463e976df0c9f9c040f2716e2f51b7163b2f9986b176359a70467870c1f04", true);
-    mikey_sakke_provision_key_material(gms_keys, gms_id, "SSK", "48bf63b2c12c2052181d7aed563926a1774591aa804a662e77ac6c2450e19c8a", true);
-    mikey_sakke_provision_key_material(gms_keys, gms_id, "PVT", "04e71041fdee8964bd6e5ca83d495c440c3115ea0361da28814f3e097e0c16d83a7da45c972eded68a939390367bb4531e4ca18177912adcafe6b3d39b97494855", false);
+    mikey_sakke_provision_key_material(gms_keys, community, "KPAK", STW_KEYMAT_KPAK, false);
+    mikey_sakke_provision_key_material(gms_keys, community, "Z", STW_KEYMAT_Z, false);
+    mikey_sakke_provision_key_material(gms_keys, gms_id, "RSK", STW_KEYMAT_RSK_GMS, true);
+    mikey_sakke_provision_key_material(gms_keys, gms_id, "SSK", STW_KEYMAT_SSK_GMS, true);
+    mikey_sakke_provision_key_material(gms_keys, gms_id, "PVT", STW_KEYMAT_PVT_GMS, false);
     // clang-format on
 
     // Set community params in Alice keystore
@@ -313,7 +322,7 @@ TEST(test_i_message, i_message_csk) {
         ss.str(std::string());
         ss.clear();
         ss << key_period_no;
-        mikey_sakke_set_public_parameter(gms_keys, community, "KeyPeriodNo", ss.str().c_str());
+        mikey_sakke_set_public_parameter(gms_keys, community, "UserKeyPeriodNoSet", ss.str().c_str());
         mikey_sakke_set_public_parameter(gms_keys, community, "KmsUri", kms_uri);
         mikey_sakke_set_public_parameter(gms_keys, community, "SakkeSet", "1");
     }
@@ -379,13 +388,14 @@ TEST(test_i_message, i_message_csk) {
 
 /* Alice is sending a PCK to Bob */
 TEST(test_i_message, i_message_pck) {
+    //mikey_sakke_set_log_func(stw_log);
     mikey_sakke_set_log_level("debug");
 
     const char community[]     = "streamwide.com";
-    uint8_t*   pck             = mikey_sakke_gen_key();
+    uint8_t*   pck             = mikey_sakke_gen_key(16);
     uint8_t*   pck_id          = mikey_sakke_gen_key_id(PCK);
-    uint8_t*   pck_rand        = mikey_sakke_gen_key();
-    const char kms_uri[]       = "0.0.0.0:8080";
+    uint8_t*   pck_rand        = mikey_sakke_gen_key(16);
+    const char kms_uri[]       = STW_KMS_URI;
     uint32_t   user_key_period = 2592000;
     uint32_t   user_key_offset = 0;
     // DO NOT CHANGE THE KEY PERIOD NO : KEYS WILL VALIDATE ONLY FOR THIS PERIOD
@@ -408,11 +418,11 @@ TEST(test_i_message, i_message_pck) {
     mikey_sakke_add_community(alice_keys, community);
 
     // clang-format off
-    mikey_sakke_provision_key_material(alice_keys, community, "KPAK", "0450d4670bde75244f28d2838a0d25558a7a72686d4522d4c8273fb6442aebfa93dbdd37551afd263b5dfd617f3960c65a8c298850ff99f20366dce7d4367217f4", false);
-    mikey_sakke_provision_key_material(alice_keys, community, "Z", "045958EF1B1679BF099B3A030DF255AA6A23C1D8F143D4D23F753E69BD27A832F38CB4AD53DDEF4260B0FE8BB45C4C1FF510EFFE300367A37B61F701D914AEF09724825FA0707D61A6DFF4FBD7273566CDDE352A0B04B7C16A78309BE640697DE747613A5FC195E8B9F328852A579DB8F99B1D0034479EA9C5595F47C4B2F54FF21508D37514DCF7A8E143A6058C09A6BF2C9858CA37C258065AE6BF7532BC8B5B63383866E0753C5AC0E72709F8445F2E6178E065857E0EDA10F68206B63505ED87E534FB2831FF957FB7DC619DAE61301EEACC2FDA3680EA4999258A833CEA8FC67C6D19487FB449059F26CC8AAB655AB58B7CC796E24E9A394095754F5F8BAE", false);
-    mikey_sakke_provision_key_material(alice_keys, alice_id, "RSK", "04991dd025c1bbd553f8bb35e3fd730747116bfd5fce8d952a680a7ee33c81a9793fb109f2ea33804e8e248d56c436c903ccef65b96abae7e555bea4c6f6929ffc188f179f28dfd0fc0fac419871495bfa35cd7f7cb9a8c91a566ae4d359a0efafd53357618f87ce53cefa5a5906e53e8d0864140fb1ad9ee097214780b63aa1084e2da4b713ccd42ec7abf967dce69108a4d8ad173553080e8c5972cf9a9d00662b080fbbe4b13dfa46f1ee34e6fbc3eed7c47a9e7382c3f456bdb009f71305f0fb7e5fee32d0800707a5a1673271f1234f1c4d4fda52651ada3e292c519d998a9d2463e976df0c9f9c040f2716e2f51b7163b2f9986b176359a70467870c1f04", true);
-    mikey_sakke_provision_key_material(alice_keys, alice_id, "SSK", "c9de2281bb7e7455cc63c95ebb0d576dbfd998b940d9eac71f3915689b83abec", true);
-    mikey_sakke_provision_key_material(alice_keys, alice_id, "PVT", "049e8c279b4c673515032ac1e8d4ba5e91d3e38fbc9e96da577568cec7d46cbeb1edc62a9bc0bfbec07d832c8a771103d5f00717eadcaf6a420a9d1cdf82e726ec", false);
+    mikey_sakke_provision_key_material(alice_keys, community, "KPAK", STW_KEYMAT_KPAK, false);
+    mikey_sakke_provision_key_material(alice_keys, community, "Z", STW_KEYMAT_Z, false);
+    mikey_sakke_provision_key_material(alice_keys, alice_id, "RSK", STW_KEYMAT_RSK_GMS, true);
+    mikey_sakke_provision_key_material(alice_keys, alice_id, "SSK", STW_KEYMAT_SSK_GMS, true);
+    mikey_sakke_provision_key_material(alice_keys, alice_id, "PVT", STW_KEYMAT_PVT_GMS, false);
     // clang-format on
 
     ASSERT_TRUE(mikey_sakke_validate_signing_keys(alice_id, alice_keys));
@@ -428,7 +438,7 @@ TEST(test_i_message, i_message_pck) {
         ss.str(std::string());
         ss.clear();
         ss << key_period_no;
-        mikey_sakke_set_public_parameter(alice_keys, community, "KeyPeriodNo", ss.str().c_str());
+        mikey_sakke_set_public_parameter(alice_keys, community, "UserKeyPeriodNoSet", ss.str().c_str());
         mikey_sakke_set_public_parameter(alice_keys, community, "KmsUri", kms_uri);
         mikey_sakke_set_public_parameter(alice_keys, community, "SakkeSet", "1");
     }
@@ -442,11 +452,11 @@ TEST(test_i_message, i_message_pck) {
     mikey_sakke_add_community(bob_keys, community);
 
     // clang-format off
-    mikey_sakke_provision_key_material(bob_keys, community, "KPAK", "0450d4670bde75244f28d2838a0d25558a7a72686d4522d4c8273fb6442aebfa93dbdd37551afd263b5dfd617f3960c65a8c298850ff99f20366dce7d4367217f4", false);
-    mikey_sakke_provision_key_material(bob_keys, community, "Z", "045958EF1B1679BF099B3A030DF255AA6A23C1D8F143D4D23F753E69BD27A832F38CB4AD53DDEF4260B0FE8BB45C4C1FF510EFFE300367A37B61F701D914AEF09724825FA0707D61A6DFF4FBD7273566CDDE352A0B04B7C16A78309BE640697DE747613A5FC195E8B9F328852A579DB8F99B1D0034479EA9C5595F47C4B2F54FF21508D37514DCF7A8E143A6058C09A6BF2C9858CA37C258065AE6BF7532BC8B5B63383866E0753C5AC0E72709F8445F2E6178E065857E0EDA10F68206B63505ED87E534FB2831FF957FB7DC619DAE61301EEACC2FDA3680EA4999258A833CEA8FC67C6D19487FB449059F26CC8AAB655AB58B7CC796E24E9A394095754F5F8BAE", false);
-    mikey_sakke_provision_key_material(bob_keys, bob_id, "RSK", "04991dd025c1bbd553f8bb35e3fd730747116bfd5fce8d952a680a7ee33c81a9793fb109f2ea33804e8e248d56c436c903ccef65b96abae7e555bea4c6f6929ffc188f179f28dfd0fc0fac419871495bfa35cd7f7cb9a8c91a566ae4d359a0efafd53357618f87ce53cefa5a5906e53e8d0864140fb1ad9ee097214780b63aa1084e2da4b713ccd42ec7abf967dce69108a4d8ad173553080e8c5972cf9a9d00662b080fbbe4b13dfa46f1ee34e6fbc3eed7c47a9e7382c3f456bdb009f71305f0fb7e5fee32d0800707a5a1673271f1234f1c4d4fda52651ada3e292c519d998a9d2463e976df0c9f9c040f2716e2f51b7163b2f9986b176359a70467870c1f04", true);
-    mikey_sakke_provision_key_material(bob_keys, bob_id, "SSK", "48bf63b2c12c2052181d7aed563926a1774591aa804a662e77ac6c2450e19c8a", true);
-    mikey_sakke_provision_key_material(bob_keys, bob_id, "PVT", "04e71041fdee8964bd6e5ca83d495c440c3115ea0361da28814f3e097e0c16d83a7da45c972eded68a939390367bb4531e4ca18177912adcafe6b3d39b97494855", false);
+    mikey_sakke_provision_key_material(bob_keys, community, "KPAK", STW_KEYMAT_KPAK, false);
+    mikey_sakke_provision_key_material(bob_keys, community, "Z", STW_KEYMAT_Z, false);
+    mikey_sakke_provision_key_material(bob_keys, bob_id, "RSK", STW_KEYMAT_RSK_GMS, true);
+    mikey_sakke_provision_key_material(bob_keys, bob_id, "SSK", STW_KEYMAT_SSK_GMS, true);
+    mikey_sakke_provision_key_material(bob_keys, bob_id, "PVT", STW_KEYMAT_PVT_GMS, false);
     // clang-format on
 
     // Set community params in Alice keystore
@@ -461,7 +471,7 @@ TEST(test_i_message, i_message_pck) {
         ss.str(std::string());
         ss.clear();
         ss << key_period_no;
-        mikey_sakke_set_public_parameter(bob_keys, community, "KeyPeriodNo", ss.str().c_str());
+        mikey_sakke_set_public_parameter(bob_keys, community, "UserKeyPeriodNoSet", ss.str().c_str());
         mikey_sakke_set_public_parameter(bob_keys, community, "KmsUri", kms_uri);
         mikey_sakke_set_public_parameter(bob_keys, community, "SakkeSet", "1");
     }
