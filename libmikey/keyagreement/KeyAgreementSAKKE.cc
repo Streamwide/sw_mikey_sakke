@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <libmcrypto/rand.h>
 #include <libmikey/KeyAgreementSAKKE.h>
 #include <libmikey/MikeyException.h>
@@ -67,6 +68,14 @@ enum SakkeIdentifierScheme : uint8_t {
     PrivateEndPointAddressWithMonthlyKeys = 240,
 };
 
+int getMinimalByteSize(uint64_t number) {
+    int i;
+
+    for (i=0; number >> (8*i); i++);
+
+    return i;
+}
+
 OctetString genMikeySakkeUid(std::string uri, std::string kms_uri, uint32_t key_period, uint32_t key_period_offset,
                              std::optional<uint32_t> current_key_period_no) {
     MIKEY_SAKKE_LOGD("Generating MikeySakkeUID with the following parameters");
@@ -102,17 +111,8 @@ OctetString genMikeySakkeUid(std::string uri, std::string kms_uri, uint32_t key_
 
     /* P3 */
     OctetString P3;
-    uint32_t    max              = 0xFFFFFFFF;
-    unsigned    key_period_bytes = sizeof(key_period);
+    unsigned    key_period_bytes = getMinimalByteSize((uint64_t)key_period);
 
-    /* Find out how many bytes needed to hold P3 */
-    for (unsigned i = 0; i < sizeof(key_period); ++i) {
-        if (key_period > (max >> (8 * i))) {
-            key_period_bytes++;
-            break;
-        }
-        key_period_bytes--;
-    }
     for (unsigned i = 0; i < key_period_bytes; ++i) {
         P3.concat((key_period >> ((key_period_bytes - 1 - i) * 8)) & 0xFF);
     }
@@ -124,16 +124,9 @@ OctetString genMikeySakkeUid(std::string uri, std::string kms_uri, uint32_t key_
 
     /* P4 */
     /* Find out how many bytes needed to hold P4 */
-    unsigned    key_period_offset_bytes = sizeof(key_period_offset);
+    unsigned    key_period_offset_bytes = getMinimalByteSize((uint64_t)key_period_offset);
     OctetString P4;
     if (key_period_offset != 0) {
-        for (unsigned i = 0; i < sizeof(key_period_offset); ++i) {
-            if (key_period_offset > (max >> (8 * i))) {
-                key_period_offset_bytes++;
-                break;
-            }
-            key_period_offset_bytes--;
-        }
         for (unsigned i = 0; i < key_period_offset_bytes; ++i) {
             P4.concat((key_period_offset >> ((key_period_offset_bytes - 1 - i) * 8)) & 0xFF);
         }
@@ -156,15 +149,7 @@ OctetString genMikeySakkeUid(std::string uri, std::string kms_uri, uint32_t key_
     if (current_key_period_no == std::nullopt) {
         uint64_t now   = libmutil::Timestamp::Get3GPPSecondsNow64();
         P5_int         = (now - key_period_offset) / key_period;
-        P5_bytes       = sizeof(P5_int);
-        uint64_t max64 = 0xFFFFFFFFFFFFFFFF;
-        for (unsigned i = 0; i < sizeof(P5_int); ++i) {
-            if (P5_int > (max64 >> (8 * i))) {
-                ++P5_bytes;
-                break;
-            }
-            P5_bytes--;
-        }
+        P5_bytes       = getMinimalByteSize(P5_int);
     } else {
         P5_int   = current_key_period_no.value();
         P5_bytes = 0;
@@ -435,14 +420,14 @@ class MikeyMessageSAKKE : public MikeyMessage {
 
         // for now, include all identifiers
         if (!anonymousSender) {
-            addPayload(new MikeyPayloadID(MIKEYPAYLOAD_ID_TYPE_URI, senderId.size(), senderId.raw(), MIKEYPAYLOAD_ID_ROLE_INITIATOR));
+            addPayload(new MikeyPayloadID(MIKEYPAYLOAD_ID_TYPE_URI, senderId.size(), senderId.raw(), MIKEYPAYLOAD_ID_ROLE_UID_INITIATOR));
         }
-        addPayload(new MikeyPayloadID(MIKEYPAYLOAD_ID_TYPE_URI, peerId.size(), peerId.raw(), MIKEYPAYLOAD_ID_ROLE_RESPONDER));
+        addPayload(new MikeyPayloadID(MIKEYPAYLOAD_ID_TYPE_URI, peerId.size(), peerId.raw(), MIKEYPAYLOAD_ID_ROLE_UID_RESPONDER));
         if (!anonymousSender) {
             addPayload(
-                new MikeyPayloadID(MIKEYPAYLOAD_ID_TYPE_URI, senderKmsId.size(), senderKmsId.raw(), MIKEYPAYLOAD_ID_ROLE_INITIATOR_KMS));
+                new MikeyPayloadID(MIKEYPAYLOAD_ID_TYPE_URI, kmsUri.size(), (uint8_t*)(kmsUri.c_str()), MIKEYPAYLOAD_ID_ROLE_INITIATOR_KMS));
         }
-        addPayload(new MikeyPayloadID(MIKEYPAYLOAD_ID_TYPE_URI, peerKmsId.size(), peerKmsId.raw(), MIKEYPAYLOAD_ID_ROLE_RESPONDER_KMS));
+        addPayload(new MikeyPayloadID(MIKEYPAYLOAD_ID_TYPE_URI, kmsUri.size(), (uint8_t*)(kmsUri.c_str()), MIKEYPAYLOAD_ID_ROLE_RESPONDER_KMS));
 
         // adding security policy
         addPolicyToPayload(ka);
@@ -645,6 +630,8 @@ class MikeyMessageSAKKE : public MikeyMessage {
                 #endif /* SHOW_SECRETS_IN_LOGS_DEV_ONLY */
             } else {
                 MIKEY_SAKKE_LOGE("SAKKE encapsulated data could not be decrypted");
+                ka->setAuthError("Failed to extract TGK from SAKKE payload.");
+                return true;
             }
             MRef<MikeyPayload*>            ext        = extractPayload(MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE);
             MikeyPayloadGeneralExtensions* extensions = ext.isNull() ? nullptr : dynamic_cast<MikeyPayloadGeneralExtensions*>(*ext);
@@ -673,11 +660,6 @@ class MikeyMessageSAKKE : public MikeyMessage {
 
         } catch (std::exception& e) {
             MIKEY_SAKKE_LOGE("ExtractSharedSecret error : %s", e.what());
-        }
-
-        if (SSV.octets.empty()) {
-            ka->setAuthError("Failed to extract TGK from SAKKE payload.");
-            return true;
         }
 
         if (type == KeyParametersPayload::KeyType::GMK || type == KeyParametersPayload::KeyType::PCK) {

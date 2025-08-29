@@ -548,8 +548,8 @@ OctetString ExtractSharedSecret(OctetString const& SED, const OctetString& ident
     const OctetString& Z   = keys->GetPublicKey(community, "Z");
     const OctetString& RSK = keys->GetPrivateKey(identifier.translate(), "RSK");
 
-    if (Z.octets[0] != 0x04 || RSK.octets[0] != 0x04) {
-        MIKEY_SAKKE_LOGE("Key invalid format. Must be uncompressed data.");
+    if (!Z.size() || !RSK.size() || Z.octets[0] != 0x04 || RSK.octets[0] != 0x04) {
+        MIKEY_SAKKE_LOGE("Z/RSK Key invalid format (or empty). Must be uncompressed data.");
         return {};
     }
 

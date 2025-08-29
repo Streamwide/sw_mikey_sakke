@@ -362,7 +362,7 @@ void mikey_sakke_client_set_ca_cert_bundle(km_client_t* client, const char* ca_f
     }
 }
 
-void mikey_sakke_client_set_ca_cert_bundle_blob(km_client_t* client, const char* pem_blob) {
+void mikey_sakke_client_set_ca_cert_bundle_blob(__attribute__((unused)) km_client_t* client, __attribute__((unused)) const char* pem_blob) {
 #ifdef CURL_BLOB_SUPPORT /* SmartMS 4.3 is based on REHL9 which is limited to libcurl-7.76 however BLOB has been introduced in 7.77 */
     std::string pemblob = "";
     if (pem_blob) {
