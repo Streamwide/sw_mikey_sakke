@@ -40,6 +40,7 @@ foreach(file ${files})
 
     target_link_libraries(${file_exe} PRIVATE GTest::gtest_main)
     target_link_libraries(${file_exe} PRIVATE sw_mikey_sakke)
+    target_link_libraries(${file_exe} PRIVATE CURL::libcurl)
 
     add_test(
         NAME ${file_exe}

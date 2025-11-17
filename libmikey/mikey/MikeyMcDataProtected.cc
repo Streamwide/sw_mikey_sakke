@@ -119,9 +119,8 @@ MikeyMcDataProtected::MikeyMcDataProtected(uint8_t* start, int lengthLimit) {
 
     // Compatibility mode with I-MESSAGE generated <= 1.1.13 or 2.0.2 (McDataProtected was directly a KeyParametersPayload)
     // Also the "messageType" had an incorrect value (starting from 1 instead of 0)
-    if ((lengthLimit == 20 || lengthLimit == 21) && this->messageType >= 0x1 && this->messageType <= 0x3 // Before fix, GMK=1, PCK=2, CSK=3
-        && this->dateTime == 256 && this->payloadId == 0 && this->payloadSequenceNumber == 0
-        && this->payloadAlgorithm == 0 && this->signalingAlgorithm == 0) {
+    // In new format, messageType > 0x40 because message is encrypted
+    if (this->messageType >= 0x1 && this->messageType <= 0x3) { // Before fix, GMK=1, PCK=2, CSK=3
         // Create static entry (as it was in the past)
         this->keyParams = std::make_shared<KeyParametersPayload>(static_cast<KeyParametersPayload::KeyType>(this->messageType - 1), KeyParametersPayload::NOT_REVOKED, 0, 0, "");
     } else {

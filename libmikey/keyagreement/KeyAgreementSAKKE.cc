@@ -263,9 +263,17 @@ void KeyAgreementSAKKE::autoDownloadKeys(uint32_t timestampPeriod, OctetString& 
         if (ret == 0) {
             // Check
             MIKEY_SAKKE_LOGD("[autoDownloadKeys] Analyse INIT results...");
-            if (kmsClient->getInitResponse() == nullptr) {
+            init_response_t* init_keys = kmsClient->getInitResponse();
+            if (init_keys == nullptr) {
                 MIKEY_SAKKE_LOGW("[autoDownloadKeys] Failing to parse INIT response ? go retry");
                 needRetry = true;
+            } else if (kmsClient->getUserUri().empty()) {
+                if (!init_keys->user_uri.empty()) {
+                    kmsClient->setUserUri(init_keys->user_uri);
+                } else {
+                    MIKEY_SAKKE_LOGE("[autoDownloadKeys] ERROR: No UserUri parsed in INIT");
+                    needRetry = true;
+                }
             }
         } else {
             needRetry = true;

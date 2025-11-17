@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
+include(third_party/third_versions.cmake)
 project(sw_mikey_sakke LANGUAGES    CXX
                        DESCRIPTION  "Implementation of TS33.180")
 
@@ -27,8 +28,6 @@ set (DIRLIBMCRYPTO         ./libmcrypto)
 set (DIRLIBMIKEY           ./libmikey)
 set (DIRLIBMIKEYSAKKE      ./libmikey-sakke)
 set (DIRLIBKMSAGENT        ./kms-agent)
-
-set (GMP_VERSION            6.3.0)
 
 option(USE_SPDLOG       "Build with spdlog" OFF)
 option(SECURED_REQUESTS "Adds a signed XML secure request element to the HTTP requests. (Not supported yet)" OFF)
@@ -190,7 +189,6 @@ file(GLOB exported_headers_sw_mikey_sakke
     ${DIRLIBMIKEYSAKKE}/include/mikeysakke4c.h
 )
 
-if(IOSBUILD)
 add_library(${PROJECT_NAME} SHARED
     ${libmcrypto_source_files}
     ${libmcrypto_openssl_source_files}
@@ -201,18 +199,6 @@ add_library(${PROJECT_NAME} SHARED
     ${mscrypto_openssl_source_files}
     ${exported_headers_sw_mikey_sakke}
 )
-else()
-add_library(${PROJECT_NAME}
-    ${libmcrypto_source_files}
-    ${libmcrypto_openssl_source_files}
-    ${libmikey_source_files}
-    ${libmutil_source_files}
-    ${libkmsagent_source_files}
-    ${libswmikeysakke_source_files}
-    ${mscrypto_openssl_source_files}
-    ${exported_headers_sw_mikey_sakke}
-)
-endif()
 
 if(NOT SECURED_REQUESTS)
     target_compile_definitions(

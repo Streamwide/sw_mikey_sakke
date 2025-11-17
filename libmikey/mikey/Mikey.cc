@@ -136,12 +136,12 @@ uint32_t Mikey::inferKeyPeriodNo(mikey_clear_info_t* clearInfo, const char* from
         throw MikeyException("Keystore not initialized: KmsUri empty");
     }
 
-    MIKEY_SAKKE_LOGD("[inferKeyPeriodNo] Input are from_uri[%s], to_uri[%s], kms[%s], userKeyPeriod[%d], userKeyPeriodOffset[%d] periodNoInKeys[%d],\ninitiatorId[%s]\nresponderId[%s]"
-        , from_uri, config->getUri().c_str(), kmsUri.c_str(), userKeyPeriod, userKeyOffset, periodNoInKeys, clearInfo->initiatorId, clearInfo->responderId);
-    OctetString initiatorIdCalculated, responderIdCalculated;
-
     // XXX Potential int32 overflow ?
     uint32_t keyPeriodNoFromTimestamp = ((uint64_t)clearInfo->creationTimeNtp + (uint64_t)userKeyOffset) / userKeyPeriod;
+
+    MIKEY_SAKKE_LOGD("[inferKeyPeriodNo] Input are from_uri[%s], to_uri[%s], kms[%s], userKeyPeriod[%d], userKeyPeriodOffset[%d], keyPeriodNoFromTimestamp[%d], periodNoInKeys[%d],\ninitiatorId[%s]\nresponderId[%s]"
+        , from_uri, config->getUri().c_str(), kmsUri.c_str(), userKeyPeriod, userKeyOffset, keyPeriodNoFromTimestamp, periodNoInKeys, clearInfo->initiatorId, clearInfo->responderId);
+    OctetString initiatorIdCalculated, responderIdCalculated;
 
     uint32_t periodNoGap = 0;
     for (periodNoGap = 0; periodNoGap < FIND_PERIOD_MAX_GAP; periodNoGap++) {
@@ -228,7 +228,7 @@ void Mikey::getClearInfo(MRef<MikeyMessage*>& message, mikey_clear_info_t& info)
     }
     MRef<MikeyPayload*> responderpl = message->extractPayloadIdr(MIKEYPAYLOAD_ID_ROLE_UID_RESPONDER);
     if (responderpl.isNull()) {
-        responderpl = message->extractPayloadIdr(MIKEYPAYLOAD_ID_ROLE_INITIATOR);
+        responderpl = message->extractPayloadIdr(MIKEYPAYLOAD_ID_ROLE_RESPONDER);
     }
     auto*               responder   = static_cast<MikeyPayloadID*>(*responderpl);
     if (responder->idLength() == 32) {
@@ -298,6 +298,8 @@ bool Mikey::responderAuthenticate(const string& message, const string& peerUri, 
                         OctetString none = OctetString{0, (uint8_t const*)""};
                         MIKEY_SAKKE_LOGW("Try to autoDownload keys as KeyStore is empty...");
                         tmp->autoDownloadKeys(0, none, 10);
+                        // HACK but required, as Mikey must be created, normally, only when KMClient->userUri is set, but not always the case
+                        config->setUri(kmsClient->getUserUri());
                         keyPeriodNo = inferKeyPeriodNo(&info, peerUri.c_str());
                         MIKEY_SAKKE_LOGW("Last chance of getting KeyPeriodNo right: %d", keyPeriodNo);
                         delete(tmp);

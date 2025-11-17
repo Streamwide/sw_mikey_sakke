@@ -616,6 +616,10 @@ mikey_sakke_user_t* mikey_sakke_alloc_user(char const* uri, mikey_sakke_key_mate
             return uri;
         }
 
+        void setUri(std::string newUri) override {
+            uri = newUri;
+        }
+
         size_t getPskLength() const override {
             return 0;
         }

@@ -56,6 +56,8 @@ class LIBMIKEY_API IMikeyConfig : public virtual MObject {
 
     virtual const std::string getUri() const = 0;
 
+    virtual void           setUri(std::string newUri) = 0;
+
     virtual size_t         getPskLength() const = 0;
     virtual const uint8_t* getPsk() const       = 0;
 
