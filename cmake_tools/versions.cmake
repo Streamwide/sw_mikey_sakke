@@ -30,7 +30,7 @@ else ()
     target_compile_definitions(
         ${PROJECT_NAME}
         PUBLIC
-        SW_MIKEY_SAKKE_VERSION="${CURRENT_BRANCH}"
+        SW_MIKEY_SAKKE_VERSION="${CURRENT_TAG_MAJOR}.${CURRENT_TAG_MINOR}"
     )
 endif (${CURRENT_BRANCH} STREQUAL "master")
 

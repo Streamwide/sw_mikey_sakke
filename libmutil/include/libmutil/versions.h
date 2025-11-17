@@ -1,7 +1,11 @@
 #ifndef LIBMUTIL_VERSIONS_H
 #define LIBMUTIL_VERSIONS_H
 
-#include <cstdio>
+#if __cplusplus
+extern "C" {
+#endif
+
+#include <stdio.h>
 
 const char* mikey_sakke_get_version() {
     int  major = 0;
@@ -16,5 +20,9 @@ const char* mikey_sakke_get_version() {
 const char* mikey_sakke_get_revision() {
     return SW_MIKEY_SAKKE_REVISION;
 }
+
+#if __cplusplus
+}
+#endif
 
 #endif

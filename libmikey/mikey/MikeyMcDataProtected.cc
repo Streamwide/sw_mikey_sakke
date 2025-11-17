@@ -126,7 +126,11 @@ MikeyMcDataProtected::MikeyMcDataProtected(uint8_t* start, int lengthLimit) {
         this->keyParams = std::make_shared<KeyParametersPayload>(static_cast<KeyParametersPayload::KeyType>(this->messageType - 1), KeyParametersPayload::NOT_REVOKED, 0, 0, "");
     } else {
         // Normal case (delete the compatility mode in the future)
-        uint32_t n_startiv = n; 
+        uint32_t n_startiv = n;
+        if (n + MCDATA_IV_LEN > (uint32_t)lengthLimit) {
+            MIKEY_SAKKE_LOGE("McDataProtected: payloadLen is too small to copy IV");
+            throw MikeyExceptionMessageLengthException("McDataProtected: payloadLen is too small to copy IV");
+        }
         memcpy(this->iv, start+n, MCDATA_IV_LEN);
         n += MCDATA_IV_LEN;
         this->dppkId                = (uint32_t)start[n] << 24 | (uint32_t)start[n+1] << 16 | (uint32_t)start[n+2] << 8 | (uint32_t)start[n+3];
@@ -136,6 +140,10 @@ MikeyMcDataProtected::MikeyMcDataProtected(uint8_t* start, int lengthLimit) {
         this->payloadCipheredLen    = (uint16_t)start[n] << 8 | (uint16_t)start[n+1];
         n += 2;
         this->payloadCipheredLen    = lengthLimit - n;
+        if (n + this->payloadCipheredLen > (uint32_t)lengthLimit) {
+            MIKEY_SAKKE_LOGE("McDataProtected: payloadLen is too small to copy cipheredPayload");
+            throw MikeyExceptionMessageLengthException("McDataProtected: payloadLen is too small to copy cipheredPayload");
+        }
         this->payloadCiphered       = (uint8_t*)malloc((this->payloadCipheredLen + MCDATA_IV_LEN) * sizeof(this->payloadCiphered));
         memcpy(this->payloadCiphered, start + n, this->payloadCipheredLen);
         memcpy(this->payloadCiphered + this->payloadCipheredLen, this->iv, MCDATA_IV_LEN);

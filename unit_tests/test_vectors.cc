@@ -258,6 +258,7 @@ TEST(test_vectors, streamwide_official_reference) {
     const char gms_uri[]       = "gms@streamwide.com";
     const char alice_uri[]     = "sip:alice@streamwide.com";
     const char bob_uri[]       = "sip:bob@streamwide.com";
+    const char iwf_uri[]       = "sip:iwf_legacy_v1.1.x_format@streamwide.com";
 
     auto o_gmk    = OctetString {16, gmk};
     auto o_gmk_id = OctetString {4, gmk_id};
@@ -270,6 +271,7 @@ TEST(test_vectors, streamwide_official_reference) {
     mikey_sakke_key_material_t* gms_keys    = mikey_sakke_alloc_key_material("runtime:empty");
     mikey_sakke_key_material_t* alice_keys  = mikey_sakke_alloc_key_material("runtime:empty");
     mikey_sakke_key_material_t* bob_keys    = mikey_sakke_alloc_key_material("runtime:empty");
+    mikey_sakke_key_material_t* iwf_keys    = mikey_sakke_alloc_key_material("runtime:empty");
 
     int init_format = 2;
     uint32_t   user_key_period = 16777215;
@@ -294,10 +296,15 @@ TEST(test_vectors, streamwide_official_reference) {
     OctetString bob_ssk = OctetString::skipws("a36885736f21b6ceba48448093086f4ada1ce099bd77e3047c04529ac3f4d4eb");
     OctetString bob_pvt = OctetString::skipws("049c203fda536ae9481eb7f3a1e4662d0adaa6a3b7d3fff0c2dfadd148a754af424d434253b62dcd08eb6aedb6cd091e09f8539d41d3ef2d0ce07e8ead352f2dd9");
 
+    OctetString iwf_id = OctetString::skipws("edb3cd733168a81106e366c2ddc0e4bc323e9069d48edfe2b3b0f7033bae962a");
+    OctetString iwf_decryptkey = OctetString::skipws("0424b74f88f8fb0cc7b1fa8b48ef1cd676ac776a3dc98d41c7e334308a7068906d44eb13ea49c472b8835685a4151a2705fb78e0371ff351d7ed38de0977ca10ad23c91a569010718f0498daa45f46d8c57e40d96081b839d59c0a1ce06a5044f53ec9b379e730da0605cafcb922b018023c463478d63298bad759dbcae40e8120703f7badd9e5635a22e2a95d7fa94455225065d1d417b3eba279a77882d50425336ed8c5529c608e1777dbad5da9cb23d2fdc5ff0225b1c2237463ac107d9a9f3160e2e4b0e6601fa7609fe28640d8b03cdda21411370a5610758436ab98793caef1391ff7eaa01ee15e4893d72c648eba206d17199cf416e56e09e7bca3ae3d");
+    OctetString iwf_ssk = OctetString::skipws("ed3162edf45f6e6f0f0939a02c84795c2ab78f714c91fe0254ca0f48eacf6a20");
+    OctetString iwf_pvt = OctetString::skipws("0411d4c57e7b945588148a55f9e88bd1d62017f4fab600af6bf4dcdb05e6f75e9441e20f7a9e2371ebb34692b941270b52744d1699538b41a4cdf043101e23449d");
 
     mikey_sakke_add_community(gms_keys, community);
     mikey_sakke_add_community(alice_keys, community);
     mikey_sakke_add_community(bob_keys, community);
+    mikey_sakke_add_community(iwf_keys, community);
 
     // clang-format off
     mikey_sakke_provision_key_material(gms_keys, community, "KPAK", init_kpak.translate().c_str(), false);
@@ -315,11 +322,17 @@ TEST(test_vectors, streamwide_official_reference) {
     mikey_sakke_provision_key_material(bob_keys, bob_id.translate().c_str(), "RSK", bob_decryptkey.translate().c_str(), true);
     mikey_sakke_provision_key_material(bob_keys, bob_id.translate().c_str(), "SSK", bob_ssk.translate().c_str(), true);
     mikey_sakke_provision_key_material(bob_keys, bob_id.translate().c_str(), "PVT", bob_pvt.translate().c_str(), false);
+    mikey_sakke_provision_key_material(iwf_keys, community, "KPAK", init_kpak.translate().c_str(), false);
+    mikey_sakke_provision_key_material(iwf_keys, community, "Z", init_z.translate().c_str(), false);
+    mikey_sakke_provision_key_material(iwf_keys, iwf_id.translate().c_str(), "RSK", iwf_decryptkey.translate().c_str(), true);
+    mikey_sakke_provision_key_material(iwf_keys, iwf_id.translate().c_str(), "SSK", iwf_ssk.translate().c_str(), true);
+    mikey_sakke_provision_key_material(iwf_keys, iwf_id.translate().c_str(), "PVT", iwf_pvt.translate().c_str(), false);
     // clang-format on
 
     ASSERT_TRUE(mikey_sakke_validate_signing_keys(gms_id.translate().c_str(), gms_keys));
     ASSERT_TRUE(mikey_sakke_validate_signing_keys(alice_id.translate().c_str(), alice_keys));
     ASSERT_TRUE(mikey_sakke_validate_signing_keys(bob_id.translate().c_str(), bob_keys));
+    ASSERT_TRUE(mikey_sakke_validate_signing_keys(iwf_id.translate().c_str(), iwf_keys));
 
     mikey_sakke_set_public_parameter(gms_keys, community, "UserKeyPeriod", libmutil::itoa(user_key_period).c_str());
     mikey_sakke_set_public_parameter(gms_keys, community, "UserKeyOffset", libmutil::itoa(user_key_offset).c_str());
@@ -336,6 +349,11 @@ TEST(test_vectors, streamwide_official_reference) {
     mikey_sakke_set_public_parameter(bob_keys, community, "UserKeyPeriodNoSet", libmutil::itoa(key_period_no).c_str());
     mikey_sakke_set_public_parameter(bob_keys, community, "KmsUri", kms_uri);
     mikey_sakke_set_public_parameter(bob_keys, community, "SakkeSet", "1");
+    mikey_sakke_set_public_parameter(iwf_keys, community, "UserKeyPeriod", libmutil::itoa(user_key_period).c_str());
+    mikey_sakke_set_public_parameter(iwf_keys, community, "UserKeyOffset", libmutil::itoa(user_key_offset).c_str());
+    mikey_sakke_set_public_parameter(iwf_keys, community, "UserKeyPeriodNoSet", libmutil::itoa(key_period_no).c_str());
+    mikey_sakke_set_public_parameter(iwf_keys, community, "KmsUri", kms_uri);
+    mikey_sakke_set_public_parameter(iwf_keys, community, "SakkeSet", "1");
 
 
     // Prepare
@@ -348,6 +366,9 @@ TEST(test_vectors, streamwide_official_reference) {
     mikey_sakke_user_t* bob          = mikey_sakke_alloc_user(bob_uri, bob_keys);
     mikey_sakke_call_t* bob_outgoing = mikey_sakke_alloc_call(bob);
     mikey_sakke_add_sender_stream(bob_outgoing, 0xcafebabe);
+    mikey_sakke_user_t* iwf          = mikey_sakke_alloc_user(iwf_uri, iwf_keys);
+    mikey_sakke_call_t* iwf_outgoing = mikey_sakke_alloc_call(iwf);
+    mikey_sakke_add_sender_stream(iwf_outgoing, 0xcafebabe);
 
     struct key_agreement_params* params = NULL;
     // Generate GMK I_MESSAGE from GMS to alice
@@ -365,14 +386,21 @@ TEST(test_vectors, streamwide_official_reference) {
     mikey_key_mgmt_string_t      pck_imessage     = mikey_sakke_group_init(alice_outgoing, bob_uri, params);
     key_agreement_params_delete(params);
 
+    // Generate GMK I_MESSAGE from GMS to iwf
+    params = key_agreement_params_create(GMK, 16, gmk, 4, gmk_id, 0, nullptr);
+    mikey_key_mgmt_string_t      gmk_iwf_imessage     = mikey_sakke_group_init(gms_outgoing, iwf_uri, params);
+    key_agreement_params_delete(params);
+
 
     Mikey mikey;
     std::string gmk_str = std::string(gmk_imessage.ptr, gmk_imessage.len);
     std::string csk_str = std::string(csk_imessage.ptr, csk_imessage.len);
     std::string pck_str = std::string(pck_imessage.ptr, pck_imessage.len);
+    std::string gmk_iwf_str = std::string(gmk_iwf_imessage.ptr, gmk_iwf_imessage.len);
     mikey.displayIMessageInfo(gmk_str);
     mikey.displayIMessageInfo(csk_str);
     mikey.displayIMessageInfo(pck_str);
+    mikey.displayIMessageInfo(gmk_iwf_str);
 
     // Re-read GMK I-MESSAGE by alice from gms
     mikey_sakke_call_t* alice_incoming = mikey_sakke_alloc_call(alice);
@@ -399,13 +427,22 @@ TEST(test_vectors, streamwide_official_reference) {
     ASSERT_TRUE(mikey_sakke_call_is_secured(bob_incoming));
     struct mikey_sakke_key_data* bob_pck = mikey_sakke_get_key_data(bob_incoming);
     OctetString pck_rand = OctetString{bob_pck->rand_size, bob_pck->rand};
+    // Re-read GMK I-MESSAGE by iwf from gms
+    mikey_sakke_call_t* iwf_incoming = mikey_sakke_alloc_call(iwf);
+    mikey_sakke_add_sender_stream(iwf_incoming, 0xdeadbeef);
+    bool gmk_iwf_authent = mikey_sakke_uas_auth(iwf_incoming, gmk_iwf_imessage, gms_uri, nullptr);
+    ASSERT_TRUE(gmk_iwf_authent);
+    ASSERT_TRUE(mikey_sakke_call_is_secured(iwf_incoming));
+    struct mikey_sakke_key_data* iwf_gmk = mikey_sakke_get_key_data(iwf_incoming);
+    OctetString iwf_rand = OctetString{iwf_gmk->rand_size, iwf_gmk->rand};
+    ASSERT_TRUE(memcmp(o_gmk.raw(), iwf_gmk->key, o_gmk.size())==0);
 
     //struct kms_key_material_init init_keys = mikey_sakke_get_key_material_init(gms);
     const char* pub_kms = mikey_sakke_get_public_parameter(gms_keys, community, "KmsUri");
     const char* pub_period = mikey_sakke_get_public_parameter(gms_keys, community, "UserKeyPeriod");
     const char* pub_offset = mikey_sakke_get_public_parameter(gms_keys, community, "UserKeyOffset");
     const char* pub_format = mikey_sakke_get_public_parameter(gms_keys, community, "UserIdFormat");
-    std::string output = "\n# Streamwide Test Vectors (v3)\n## MIKEYSAKKE-UID\nFILL-UP\n\n##MIKEYSAKKE-PAYLOAD\n### Input\n* KMS Init";
+    std::string output = "\n# Streamwide Test Vectors (v5)\n## MIKEYSAKKE-UID\nFILL-UP\n\n## MIKEYSAKKE-PAYLOAD\n### Input\n* KMS Init";
     output += std::string("\n    * KmsUri        : ") + pub_kms;
     output += std::string("\n    * UserIdFormat  : ") + libmutil::itoa(init_format);
     output += std::string("\n    * UserKeyPeriod : ") + pub_period;
@@ -426,6 +463,13 @@ TEST(test_vectors, streamwide_official_reference) {
     output += std::string("\n    * UserDecryptKey    : ") + alice_decryptkey.translate().c_str();
     output += std::string("\n    * UserSigningKeySSK : ") + alice_ssk.translate().c_str();
     output += std::string("\n    * UserPubTokenPVT   : ") + alice_pvt.translate().c_str();
+    output += std::string("\n* KMS KeyProv for IWF");
+    output += std::string("\n    * UserUri           : ") + iwf_uri;
+    output += std::string("\n    * UserID            : ") + iwf_id.translate().c_str();
+    output += std::string("\n    * KeyPeriodNo       : ") + libmutil::itoa(key_period_no);
+    output += std::string("\n    * UserDecryptKey    : ") + iwf_decryptkey.translate().c_str();
+    output += std::string("\n    * UserSigningKeySSK : ") + iwf_ssk.translate().c_str();
+    output += std::string("\n    * UserPubTokenPVT   : ") + iwf_pvt.translate().c_str();
     output += std::string("\n* KMS KeyProv for Bob");
     output += std::string("\n    * UserUri           : ") + bob_uri;
     output += std::string("\n    * UserID            : ") + bob_id.translate().c_str();
@@ -455,6 +499,13 @@ TEST(test_vectors, streamwide_official_reference) {
     output += std::string("\n    * Initiator URI : ") + alice_uri;
     output += std::string("\n    * Responder URI : ") + bob_uri;
     output += std::string("\n    * I-MESSAGE     : ") + pck_imessage.ptr;
+    output += std::string("\n\n### Test 4: GMK (legacy format for IWF)");
+    output += std::string("\n    * GMK           : ") + o_gmk.translate().c_str();
+    output += std::string("\n    * GMK-ID        : ") + o_gmk_id.translate().c_str();
+    output += std::string("\n    * GMK-RAND      : ") + iwf_rand.translate().c_str();
+    output += std::string("\n    * Initiator URI : ") + gms_uri;
+    output += std::string("\n    * Responder URI : ") + iwf_uri;
+    output += std::string("\n    * I-MESSAGE     : ") + gmk_iwf_imessage.ptr;
     MIKEY_SAKKE_LOGI("%s", output.c_str());
 
     free(gmk);
@@ -470,19 +521,25 @@ TEST(test_vectors, streamwide_official_reference) {
     mikey_sakke_free_key_mgmt_string(gmk_imessage);
     mikey_sakke_free_key_mgmt_string(csk_imessage);
     mikey_sakke_free_key_mgmt_string(pck_imessage);
+    mikey_sakke_free_key_mgmt_string(gmk_iwf_imessage);
     mikey_sakke_free_call(gms_incoming);
     mikey_sakke_free_call(alice_incoming);
     mikey_sakke_free_call(bob_incoming);
+    mikey_sakke_free_call(iwf_incoming);
     mikey_sakke_free_call(gms_outgoing);
     mikey_sakke_free_call(alice_outgoing);
     mikey_sakke_free_call(bob_outgoing);
+    mikey_sakke_free_call(iwf_outgoing);
     mikey_sakke_free_user(gms);
     mikey_sakke_free_user(alice);
     mikey_sakke_free_user(bob);
+    mikey_sakke_free_user(iwf);
     mikey_sakke_free_key_material(gms_keys);
     mikey_sakke_free_key_material(alice_keys);
     mikey_sakke_free_key_material(bob_keys);
+    mikey_sakke_free_key_material(iwf_keys);
     mikey_sakke_key_data_destroy(alice_gmk);
     mikey_sakke_key_data_destroy(gms_csk);
     mikey_sakke_key_data_destroy(bob_pck);
+    mikey_sakke_key_data_destroy(iwf_gmk);
 }

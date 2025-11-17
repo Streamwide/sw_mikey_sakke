@@ -705,18 +705,22 @@ class MikeyMessageSAKKE : public MikeyMessage {
             std::vector<uint8_t> dpck = MikeySakkeCrypto::DerivateDppkToDpck(dppkIdOs, dppkOs);
             std::shared_ptr<KeyParametersPayload> param = keyParameters(dpck.data());
 
-            if (param != nullptr) {
-                type = param->keyType;
-            } else {
+            if (param == nullptr) {
                 MIKEY_SAKKE_LOGD("No extension, KeyType extracted: 0x%x", ((csbId()>>24) & 0xF0) >> 4);
-                // Key Properties' payload is optional by TS 33.180 E.4.1 for CSK, then let's determine it through the Key-ID
-                if (((csbId()>>24) & 0xF0) >> 4 == CSK) {
-                    type = KeyParametersPayload::KeyType::CSK;
-                }
-                if (((csbId()>>24) & 0xF0) >> 4 == PCK) {
-                    type = KeyParametersPayload::KeyType::PCK;
-                }
             }
+
+            // type is by default GMK however KeyType in GeneralExtensions was wrongly encoded in the past
+            // so do not trust it until "legacy format" is no more in use
+            // Instead, csbId does contains the Key-ID (or GUK-ID) from which we can infer the type
+
+            // Key Properties' payload is optional by TS 33.180 E.4.1 for CSK, then let's determine it through the Key-ID
+            if (((csbId()>>24) & 0xF0) >> 4 == CSK) {
+                type = KeyParametersPayload::KeyType::CSK;
+            }
+            if (((csbId()>>24) & 0xF0) >> 4 == PCK) {
+                type = KeyParametersPayload::KeyType::PCK;
+            }
+
             if (type == KeyParametersPayload::KeyType::GMK) {
                 std::vector<uint8_t> gukId;
                 gukId.reserve(4);
