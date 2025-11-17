@@ -55,6 +55,12 @@ class LIBMIKEY_API MikeyExceptionUninitialized : public MikeyException {
     ~MikeyExceptionUninitialized() noexcept override;
 };
 
+class LIBMIKEY_API MikeyExceptionKeyStoreEmpty : public MikeyException {
+  public:
+    explicit MikeyExceptionKeyStoreEmpty(const char* msg);
+    ~MikeyExceptionKeyStoreEmpty() noexcept override;
+};
+
 class LIBMIKEY_API MikeyExceptionMessageContent : public MikeyException {
   public:
     explicit MikeyExceptionMessageContent(const char* msg);

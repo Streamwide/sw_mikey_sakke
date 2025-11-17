@@ -815,3 +815,14 @@ key_prov_response_t* KMClient::getKeyProvResponse() const {
 const mikey_sakke_key_material_t* KMClient::getKeyStore() const {
     return kms_response_listener.keyStore;
 }
+
+void KMClient::setKeyIndicator() {
+    key_present = true;
+}
+void KMClient::resetKeyIndicator() {
+    key_present = false;
+}
+
+bool KMClient::isNewKeyPresent() {
+    return key_present;
+}

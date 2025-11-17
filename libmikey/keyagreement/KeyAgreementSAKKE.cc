@@ -245,6 +245,32 @@ void KeyAgreementSAKKE::autoDownloadKeys(uint32_t timestampPeriod, OctetString& 
         MIKEY_SAKKE_LOGE("[autoDownloadKeys] Failed to autoDownload keys");
         return;
     }
+
+    kmsClient->resetKeyIndicator();
+    std::vector<std::string> const& communities = this->getKeyMaterial()->GetCommunityIdentifiers();
+    if (communities.empty()) {
+        throw MikeyException("No MIKEY-SAKKE user communities configured.");
+    }
+    std::string const community = communities[0];
+
+    if (this->getKeyMaterial()->GetPublicParameter(community, "UserKeyPeriod").empty() || this->getKeyMaterial()->GetPublicParameter(community, "UserKeyPeriodOffset").empty()) {
+        // Special case where KeyStore was empty at begining (no init)
+#ifdef HTTP_REQUEST_BY_CALLBACK
+        auto ret = kmsClient->sendRequest(request_type_e::INIT, NULL, NULL, NULL);
+#else
+        auto ret = kmsClient->sendRequest(request_type_e::INIT, NULL);
+#endif
+        if (ret == 0) {
+            // Check
+            MIKEY_SAKKE_LOGD("[autoDownloadKeys] Analyse INIT results...");
+            if (kmsClient->getInitResponse() == nullptr) {
+                MIKEY_SAKKE_LOGW("[autoDownloadKeys] Failing to parse INIT response ? go retry");
+                needRetry = true;
+            }
+        } else {
+            needRetry = true;
+        }
+    }
     if (this->getKeyMaterial()->GetPrivateKey(user_id.translate(), "SSK").empty() || this->getKeyMaterial()->GetPrivateKey(user_id.translate(), "RSK").empty()) {
         // Execute request to KMS server only if correspond key is not already in KeyStore
 
@@ -258,18 +284,19 @@ void KeyAgreementSAKKE::autoDownloadKeys(uint32_t timestampPeriod, OctetString& 
 #endif
         if (ret == 0) {
             // Check
-            MIKEY_SAKKE_LOGD("[autoDownloadKeys] Analyse results...");
+            MIKEY_SAKKE_LOGD("[autoDownloadKeys] Analyse KEYPROV results...");
             if (kmsClient->getKeyProvResponse() == nullptr) {
-                MIKEY_SAKKE_LOGW("[autoDownloadKeys] Failing to parse response ? go retry");
+                MIKEY_SAKKE_LOGW("[autoDownloadKeys] Failing to parse KEYPROV response ? go retry");
                 needRetry = true;
+            } else {
+                kmsClient->setKeyIndicator();
             }
         } else {
             needRetry = true;
         }
-
-        if (needRetry) {
-            return autoDownloadKeys(timestampPeriod, user_id, retries - 1);
-        }
+    }
+    if (needRetry) {
+        return autoDownloadKeys(timestampPeriod, user_id, retries - 1);
     }
 }
 
@@ -394,7 +421,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
         std::string const peerCommunity   = senderCommunity;
 
         if (keyStore->GetPublicParameter(senderCommunity, "UserKeyPeriod").empty()) {
-            throw MikeyException("Keystore not initialized");
+            throw MikeyExceptionKeyStoreEmpty("Keystore not initialized");
         }
 
         uint32_t    userKeyPeriod = std::stoi(keyStore->GetPublicParameter(senderCommunity, "UserKeyPeriod"));
@@ -407,9 +434,9 @@ class MikeyMessageSAKKE : public MikeyMessage {
         auto keyPeriodNoStr = keyStore->GetPublicParameter(senderCommunity, "UserKeyPeriodNoSet");
 
         if (keyPeriodNoStr.empty()) {
-            // If no particular period number was specified, let it compute the current period no
-            senderId = genMikeySakkeUid(ka->uri(), kmsUri, userKeyPeriod, userKeyOffset);
-            peerId   = genMikeySakkeUid(ka->peerUri(), kmsUri, userKeyPeriod, userKeyOffset);
+            // If no particular period number was specified, let it compute the current period no (from )
+            senderId = genMikeySakkeUid(ka->uri(), kmsUri, userKeyPeriod, userKeyOffset, (tsNtp - userKeyOffset) / userKeyPeriod);
+            peerId   = genMikeySakkeUid(ka->peerUri(), kmsUri, userKeyPeriod, userKeyOffset, (tsNtp - userKeyOffset) / userKeyPeriod);
         } else {
             // Otherwise, use the specified period no
             uint32_t keyPeriodNo = std::stoi(keyPeriodNoStr);

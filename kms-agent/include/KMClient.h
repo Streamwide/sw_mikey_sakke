@@ -75,6 +75,9 @@ class KMClient {
     void        setCaCertBundle(const std::string& ca_bundle_filepath);
     void        setCaCertBundleBlob(const std::string& pem_blob);
     void        setTimeout(uint32_t to);
+    void        setKeyIndicator();
+    void        resetKeyIndicator();
+    bool        isNewKeyPresent();
 
     inline std::string get_xml_request() const {
         return kms_request_xml;
@@ -114,6 +117,7 @@ class KMClient {
 
     init_response_t*     init_response;
     key_prov_response_t* key_prov_response;
+    bool        key_present;
 
     struct received_data curl_rx_data;
 

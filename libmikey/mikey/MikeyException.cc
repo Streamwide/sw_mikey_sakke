@@ -31,6 +31,10 @@ MikeyExceptionUninitialized::MikeyExceptionUninitialized(const char* msg): Mikey
 
 MikeyExceptionUninitialized::~MikeyExceptionUninitialized() noexcept = default;
 
+MikeyExceptionKeyStoreEmpty::MikeyExceptionKeyStoreEmpty(const char* msg): MikeyException(msg) {}
+
+MikeyExceptionKeyStoreEmpty::~MikeyExceptionKeyStoreEmpty() noexcept = default;
+
 MikeyExceptionNullPointerException::MikeyExceptionNullPointerException(const char* msg): MikeyException(msg) {}
 
 MikeyExceptionNullPointerException::~MikeyExceptionNullPointerException() noexcept = default;

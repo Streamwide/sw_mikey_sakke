@@ -434,3 +434,74 @@ TEST(test_i_message_infer_key, test_i_message_infer_key_auto_download) {
 
     return;
 }
+
+TEST(test_i_message_infer_key, test_i_message_infer_key_auto_download_no_keys) {
+    // Encrypted in key_period_no 1657 by gms@streamwide.com to alice@org.com
+    std::string imsg_str = "mikey ARoFAQnS1/4BAgQAAQAAAAgKN7cxCdLX/gsA7JaWpAAAAAAOEBpvdx0rQPF71YU4vU8fVv0OCAEAIEBMf+5td+fBOtiHHjQj+//asyrntjak2izgEDi2kunvDgkBACBAskpRodRiuBagPEvcJu1N6rfYbOyr/CeC4FkARiOzkg4GAQAYa21zLmRldjQzLnN0cmVhbXdpZGUuY29tCgcBABhrbXMuZGV2NDMuc3RyZWFtd2lkZS5jb20aAAAAGwABBgEBEAIBBAQBDAUBAAYBABIBBBMBABQBEBUBAgERBC057M5pw1dryagGOmOt/q9BN4hECWLDsB5tF/qPEsy/x+P0ty/fUBweStEO9YakzKwo+26GZKncvH3r/dnypCtLxIZ+4sdU6VDVnIc37sOKv8oNAp5DWuO7fDU8Mi4zzFv3Cv8EKwiqify0LFcJtjVsqABzwKsjsLS+3a9m36KJAUB8iO2ZwmOO3ip90mDcQVHqIRrSS0fOnX7JWo+FHXBHSVW9Bz527gXOaFyEkq7R9z3Zzxn6OgdC66kZuw7/GwVX3Aona0W9uYIq+r39UsW3YCMSiMmunHy2ysGwEzaXYhgqvi6pKNYprmqnNyxDl231i/Z5DCIORpwv+FuVKX2DnNwhyxDyMjSVBdhjeU+HBAcAR0MAAAAAAQAAAAAAAZ7whkO6iRChCCCuSb/vQzIJ0tf+AAAk+RDtqRc4Xy9vLFrNxBqvgJd4ehcdeJU5wasa22hxacBdYb3MIIFeKBnwu8pxDXGEKy6optI84eQmuc9A64FMqEmKcDX3WAZnotCP5v2mzWbz/e1K8dGA9yIoT5b9ACbMYMQWyuFDBFrjvYri6/MXHQb7zgRemgSgiRQfjjHW3i2EmJX1o5tvR3tWVYl5wQuk82sOxpkHPuqKEOZplkmqeDGpG9v1Ur8=";
+    OctetString gmk_expected = OctetString::skipws("e5e2339e643435252d2b670bc6c78db8");
+    OctetString gmk_id_expected = OctetString::skipws("0a37b731");
+    char                        sender_uri[] = "gms@streamwide.com";
+    char                        alice_uri[] = "alice@org.com";
+    char                        community[] = "my.comm";
+    mikey_key_mgmt_string_t     imsg;
+    const char                  token[]         = "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJtaEZNb2xodlpNVXUwT01xYjhZY2dXc0hUMEFlQ0l5cERnR2ZPV1d2SlUwIn0.eyJleHAiOjE4NTQ3NTczNzEsImlhdCI6MTc1NDY3MDk3MSwianRpIjoiN2VjNjc1NjEtNmJjYS00YmFkLTg3MTUtOGE0ZmZjMzRhMTA3IiwiaXNzIjoiaHR0cHM6Ly9vcGVuaWQuc3RyZWFtd2lkZS5jb20vYXV0aC9yZWFsbXMvRGV2UmVhbG0iLCJhdWQiOiJhY2NvdW50Iiwic3ViIjoiZWMwNWM3YzMtZWU4NS00ZjdjLWEyMGQtYmYyNmE1MzVhMjk2IiwidHlwIjoiQmVhcmVyIiwiYXpwIjoibW9iaWxlLWNsaWVudCIsInNlc3Npb25fc3RhdGUiOiJhMTc2ODA2OS1iZWNlLTQ5NTAtOTI0MS02OWRmMDViMzYyZmQiLCJhY3IiOiIxIiwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbImRlZmF1bHQtcm9sZXMtZGV2cmVhbG0iLCJvZmZsaW5lX2FjY2VzcyIsInVtYV9hdXRob3JpemF0aW9uIl19LCJyZXNvdXJjZV9hY2Nlc3MiOnsiYWNjb3VudCI6eyJyb2xlcyI6WyJtYW5hZ2UtYWNjb3VudCIsIm1hbmFnZS1hY2NvdW50LWxpbmtzIiwidmlldy1wcm9maWxlIl19fSwic2NvcGUiOiJlbWFpbCBvcGVuaWQgcHJvZmlsZSAzZ3BwOm1jcHR0OnB0dF9zZXJ2ZXIiLCJzaWQiOiJhMTc2ODA2OS1iZWNlLTQ5NTAtOTI0MS02OWRmMDViMzYyZmQiLCJtY3B0dF9pZCI6ImFsaWNlQG9yZy5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwibmFtZSI6IldlYiBDaGF0IiwicHJlZmVycmVkX3VzZXJuYW1lIjoicmJvbmFteV82NjYwMDAxMTEiLCJnaXZlbl9uYW1lIjoiV2ViIiwiZmFtaWx5X25hbWUiOiJDaGF0IiwiY2xpZW50X2lkIjoibWNwdHRfY2xpZW50IiwiZW1haWwiOiJyYm9uYW15KzY2NjAwMDExMUBzdHJlYW13aWRlLmNvbSJ9Cg.Q97rv-RB3QWxqpt-Wr4N3D-fm_QJo2XN9Q0Uz5esx_tysefS2cA_9egFSgvAlxC5hsyjbpr8ErRwLvMPtjg0XTxVcJBdMPEmKtwQqpmExKD3gtDK350vY3y4XV6zwEgVc9lML8xDfPaWbiKZg5_3lbusX5wG6UduILVJNGv9ftPhSKup9lRcCpkMBZZubRx8v9mAlE_giWb6wuUxW1sq3cD-ztdBsUhyiiJsYbobyPzl2q7ht6m5rFERRN8keu6IzdnMeLXxhto4LxOdAiW5laN-jSF8jUh5r70-3NuXzlkC0Jb4U_ID9AGvu5AA-BHnC13wbtb05ekySX6qxe22vA";
+    const char                  kms_uri[]       = "https://127.0.0.1";
+
+    //mikey_sakke_set_log_func(stw_log);
+    mikey_sakke_set_log_level("error");
+
+    mikey_sakke_key_material_t* alice_keys  = mikey_sakke_alloc_key_material("runtime:empty");
+    ASSERT_TRUE(alice_keys != NULL);
+    mikey_sakke_add_community(alice_keys, community);
+    // To orientate the infer to the correct direction
+    mikey_sakke_set_public_parameter(alice_keys, community, "UserKeyPeriodNoSet", libmutil::itoa(1650).c_str());
+
+    // Prepare
+    mikey_sakke_user_t* alice   = mikey_sakke_alloc_user(alice_uri, alice_keys);
+
+    //mikey_sakke_set_payload_signature_validation(alice, false);
+
+    // Test 1: GMK I-MESSAGE for alice from gms
+    imsg.ptr = imsg_str.data();
+    imsg.len = imsg_str.size();
+    mikey_sakke_call_t* alice_incoming = mikey_sakke_alloc_call(alice);
+    mikey_sakke_add_sender_stream(alice_incoming, 0xdeadbeef);
+
+
+    // Setup KMS client in auto-download
+#ifdef HTTP_REQUEST_BY_CALLBACK
+    km_client_t*                kms_client = mikey_sakke_client_create(kms_uri, false, alice_keys);
+    request_curl_t              extra = {enable_tls: true, tls_verify_peer: false, tls_verify_host: false};
+    if (memcmp(kms_uri, "http://", 7) == 0) {
+        extra.enable_tls = false;
+    }
+    MIKEY_SAKKE_LOGD("Request keys: tls_enabled: %d / verify_host: %d / verify_peer: %d", extra.enable_tls, extra.tls_verify_host, extra.tls_verify_peer);
+    mikey_sakke_set_http_request_func(kms_client, &executeHttpRequestCurl, (void*)&extra);
+#else
+    km_client_t*                kms_client = mikey_sakke_client_create(kms_uri, false, alice_keys, 10000);
+    mikey_sakke_client_set_tls_security(kms_client, false, false);
+#endif
+    mikey_sakke_client_set_user_uri(kms_client, alice_uri);
+    mikey_sakke_client_set_token(kms_client, token);
+    mikey_sakke_set_key_material_auto_download(alice_incoming, kms_client, true);
+
+    //ASSERT_TRUE(setupKeyMaterial(alice_uri, community, alice_keys, keymat_correct) != NULL);
+    //ASSERT_TRUE(setupKeyMaterial(alice_uri, community, alice_keys, keymat_other) != NULL);
+    // Processing the download of keys
+    bool gmk_authent = mikey_sakke_uas_auth(alice_incoming, imsg, sender_uri, nullptr);
+    ASSERT_TRUE(gmk_authent);
+    ASSERT_TRUE(mikey_sakke_call_is_secured(alice_incoming));
+    struct mikey_sakke_key_data* alice_gmk = mikey_sakke_get_key_data(alice_incoming);
+    ASSERT_EQ(alice_gmk->key_size, gmk_expected.size());
+    ASSERT_EQ(alice_gmk->key_id_size, gmk_id_expected.size());
+    ASSERT_EQ(memcmp(alice_gmk->key, gmk_expected.raw(), gmk_expected.size()), 0);
+    ASSERT_EQ(memcmp(alice_gmk->key_id, gmk_id_expected.raw(), gmk_id_expected.size()), 0);
+
+    mikey_sakke_free_call(alice_incoming);
+    mikey_sakke_free_user(alice);
+    mikey_sakke_free_key_material(alice_keys);
+    mikey_sakke_key_data_destroy(alice_gmk);
+    mikey_sakke_client_destroy(kms_client);
+
+    return;
+}

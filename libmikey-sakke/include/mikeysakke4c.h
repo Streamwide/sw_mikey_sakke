@@ -142,6 +142,7 @@ void         mikey_sakke_client_destroy(km_client_t*);
 void         mikey_sakke_client_set_token(km_client_t* client, const char* token);
 void         mikey_sakke_client_set_token2(km_client_t* client, const char* token, size_t token_len);
 
+int   mikey_sakke_client_is_new_key_present(km_client_t* client);
 void  mikey_sakke_client_set_user_uri(km_client_t* client, const char* user_uri);
 char* mikey_sakke_client_get_user_uri(km_client_t* client);
 char* mikey_sakke_client_get_user_id(km_client_t* client);

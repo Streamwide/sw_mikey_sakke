@@ -403,6 +403,13 @@ const mikey_sakke_key_material_t* mikey_sakke_client_get_key_store(km_client_t* 
     return nullptr;
 }
 
+int mikey_sakke_client_is_new_key_present(km_client_t* client) {
+    if (client) {
+        return from_c(client)->isNewKeyPresent();
+    }
+    return 0;
+}
+
 char* mikey_sakke_client_get_user_id(km_client_t* client) {
     if (client) {
         return strdup(from_c(client)->getUserId().translate().c_str());

@@ -115,13 +115,13 @@ uint32_t Mikey::inferKeyPeriodNo(mikey_clear_info_t* clearInfo, const char* from
     if (communities.empty()) {
         MIKEY_SAKKE_LOGE("community not configured, cannot validate infer keyPeriodNo");
     }
-    std::string const community = communities[0];
+    std::string const community = (communities.empty() ? "" : communities[0]);
 
     if (keyStore->GetPublicParameter(community, "UserKeyPeriod").empty()) {
-        throw MikeyException("Keystore not initialized: UserKeyPeriod empty");
+        throw MikeyExceptionKeyStoreEmpty("Keystore not initialized: UserKeyPeriod empty");
     }
     if (keyStore->GetPublicParameter(community, "UserKeyOffset").empty()) {
-        throw MikeyException("Keystore not initialized: UserKeyOffset empty");
+        throw MikeyExceptionKeyStoreEmpty("Keystore not initialized: UserKeyOffset empty");
     }
 
     auto periodNoInKeysStr = keyStore->GetPublicParameter(community, "UserKeyPeriodNoSet");
@@ -162,7 +162,7 @@ uint32_t Mikey::inferKeyPeriodNo(mikey_clear_info_t* clearInfo, const char* from
                         periodNoGap = FIND_PERIOD_MAX_GAP;
                         break;
                     } else {
-                        MIKEY_SAKKE_LOGE("[inferKeyPeriodNo] Unexpected match (initiator-uid does match but not responder-uid) with gap=%d and periodNo=%d (current configured one is %p)", periodNoGap, keyPeriodNoFromTimestamp+periodNoGap, periodNoInKeys);
+                        MIKEY_SAKKE_LOGE("[inferKeyPeriodNo] Unexpected match (initiator-uid does match but not responder-uid) with gap=%d and periodNo=%d (current configured one is %d)", periodNoGap, keyPeriodNoFromTimestamp+periodNoGap, periodNoInKeys);
                     }
                 }
             }
@@ -176,14 +176,14 @@ uint32_t Mikey::inferKeyPeriodNo(mikey_clear_info_t* clearInfo, const char* from
                     responderIdCalculated   = genMikeySakkeUid(config->getUri(), kmsUri, userKeyPeriod, userKeyOffset, periodNoInKeys + periodNoGap * sense);
 
                     if (strncmp(initiatorIdCalculated.translate().c_str(), clearInfo->initiatorId, MIKEY_SAKKE_UID_LEN) == 0) {
-                        MIKEY_SAKKE_LOGD("[inferKeyPeriodNo] Initiator-UID matched with gap=%d and periodNo=%d (current configured one is %p)", periodNoGap, periodNoInKeys+periodNoGap*sense, periodNoInKeys);
+                        MIKEY_SAKKE_LOGD("[inferKeyPeriodNo] Initiator-UID matched with gap=%d and periodNo=%d (current configured one is %d)", periodNoGap, periodNoInKeys+periodNoGap*sense, periodNoInKeys);
                         if (strncmp(responderIdCalculated.translate().c_str(), clearInfo->responderId, MIKEY_SAKKE_UID_LEN) == 0) {
-                            MIKEY_SAKKE_LOGD("[inferKeyPeriodNo] Responder-UID matched with gap=%d and periodNo=%d (current configured one is %p)", periodNoGap, periodNoInKeys+periodNoGap*sense, periodNoInKeys);
+                            MIKEY_SAKKE_LOGD("[inferKeyPeriodNo] Responder-UID matched with gap=%d and periodNo=%d (current configured one is %d)", periodNoGap, periodNoInKeys+periodNoGap*sense, periodNoInKeys);
                             ret = periodNoInKeys+periodNoGap*sense;
                             periodNoGap = FIND_PERIOD_MAX_GAP;
                             break;
                         } else {
-                            MIKEY_SAKKE_LOGE("[inferKeyPeriodNo] Unexpected match (initiator-uid does match but not responder-uid) with gap=%d and periodNo=%d (current configured one is %p)", periodNoGap, periodNoInKeys+periodNoGap, periodNoInKeys);
+                            MIKEY_SAKKE_LOGE("[inferKeyPeriodNo] Unexpected match (initiator-uid does match but not responder-uid) with gap=%d and periodNo=%d (current configured one is %d)", periodNoGap, periodNoInKeys+periodNoGap, periodNoInKeys);
                         }
                     }
                 }
@@ -289,7 +289,19 @@ bool Mikey::responderAuthenticate(const string& message, const string& peerUri, 
                 if (init_mes->keyAgreementType() == KEY_AGREEMENT_TYPE_SAKKE) {
                     mikey_clear_info_t info;
                     Mikey::getClearInfo(init_mes, info);
-                    keyPeriodNo = inferKeyPeriodNo(&info, peerUri.c_str());
+                    try {
+                        keyPeriodNo = inferKeyPeriodNo(&info, peerUri.c_str());
+                    } catch(MikeyExceptionKeyStoreEmpty& exc) {
+                        MIKEY_SAKKE_LOGW("MikeyExceptionKeyStoreEmpty caught: %s", exc.what());
+                        // Handle case when no KeyMaterial was set, then UID cannot be calculated
+                        KeyAgreementSAKKE* tmp = new KeyAgreementSAKKE(config->getKeys(), kmsClient, keyPeriodNo);
+                        OctetString none = OctetString{0, (uint8_t const*)""};
+                        MIKEY_SAKKE_LOGW("Try to autoDownload keys as KeyStore is empty...");
+                        tmp->autoDownloadKeys(0, none, 10);
+                        keyPeriodNo = inferKeyPeriodNo(&info, peerUri.c_str());
+                        MIKEY_SAKKE_LOGW("Last chance of getting KeyPeriodNo right: %d", keyPeriodNo);
+                        delete(tmp);
+                    }
                 }
                 createKeyAgreement(init_mes->keyAgreementType(), keyPeriodNo);
                 if (!ka) {
