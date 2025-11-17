@@ -186,6 +186,22 @@ else()
 )
 endif()
 
+file(GLOB exported_headers_sw_mikey_sakke
+    ${DIRLIBMIKEYSAKKE}/include/mikeysakke4c.h
+)
+
+if(IOSBUILD)
+add_library(${PROJECT_NAME} SHARED
+    ${libmcrypto_source_files}
+    ${libmcrypto_openssl_source_files}
+    ${libmikey_source_files}
+    ${libmutil_source_files}
+    ${libkmsagent_source_files}
+    ${libswmikeysakke_source_files}
+    ${mscrypto_openssl_source_files}
+    ${exported_headers_sw_mikey_sakke}
+)
+else()
 add_library(${PROJECT_NAME}
     ${libmcrypto_source_files}
     ${libmcrypto_openssl_source_files}
@@ -194,7 +210,9 @@ add_library(${PROJECT_NAME}
     ${libkmsagent_source_files}
     ${libswmikeysakke_source_files}
     ${mscrypto_openssl_source_files}
+    ${exported_headers_sw_mikey_sakke}
 )
+endif()
 
 if(NOT SECURED_REQUESTS)
     target_compile_definitions(
@@ -225,6 +243,7 @@ target_include_directories(
     ${DIRLIBMIKEY}/include
     ${DIRLIBMUTIL}/include
     ${DIRLIBKMSAGENT}/include
+    lib/libcurl/include
     ${LIBXML2_INCLUDE_DIR} #FindXml2 does not add the includes to the xml2 target
     PRIVATE
     ${OPENSSL_INCLUDE_DIR}
@@ -245,7 +264,9 @@ set_target_properties(
 )
 
 target_link_libraries(sw_mikey_sakke PRIVATE stdc++)
-if(NOT OPENSSL_ONLY)
+if(IOSBUILD OR ANDRDOIDBUILD)
+    message(STATUS "Android/iOS: do not add gmp dependency here")
+elseif(NOT OPENSSL_ONLY)
     target_link_libraries(sw_mikey_sakke PRIVATE gmp gmpxx)
 endif()
 
@@ -257,9 +278,12 @@ endif()
 if(USE_SPDLOG)
     target_link_libraries(sw_mikey_sakke PRIVATE spdlog::spdlog)
 endif()
+
+if(NOT IOSBUILD)
 target_link_libraries(sw_mikey_sakke PRIVATE CURL::libcurl)
 target_link_libraries(sw_mikey_sakke PRIVATE LibXml2::LibXml2)
 target_link_libraries(sw_mikey_sakke PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+endif()
 
 include(cmake_tools/versions.cmake)
 

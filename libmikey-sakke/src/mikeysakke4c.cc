@@ -17,6 +17,7 @@
 #include <mskms/runtime-key-storage.inl>
 #include <test_data.h>
 #include <util/printable.inl>
+#include <stdio.h>
 
 using namespace MikeySakkeKMS;
 using namespace MikeySakkeCrypto;
@@ -26,6 +27,20 @@ void kms_destroy(F f_free, T* data) {
     if(data) {
         f_free(data);
     }
+}
+
+const char* mikey_sakke_get_version() {
+    int  major = 0;
+    int  minor = 0;
+    char c     = 0;
+    if (sscanf(SW_MIKEY_SAKKE_VERSION, "%d.%d%c", &major, &minor, &c) == 2) {
+        return SW_MIKEY_SAKKE_VERSION;
+    }
+    return "99.9";
+}
+
+const char* mikey_sakke_get_revision() {
+    return SW_MIKEY_SAKKE_REVISION;
 }
 
 struct mikey_sakke_kms_response* mikey_sakke_kms_response_create() {

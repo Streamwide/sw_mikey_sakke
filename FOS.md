@@ -1,7 +1,7 @@
-(copy paste from [Trac](https://trac.smartms.streamwide.com/wiki/Specifications_client/SW_SmartMS_VoipStack30_FOS))
-
-|| '''Name''' || '''Version''' || '''Release Date''' || '''License''' || '''Site''' || '''Notes''' ||
-||  gmp      ||  6.3.0    ||  2023-07-30  ||  LGPLv3  ||  [GMP]https://gmplib.org/                         ||      Latest stable published version                       ||
-||  openssl  ||  3.5.2    ||  2025-08-05  ||  Apache  ||  [OpenSSL]https://www.openssl.org/source/         ||      Latest stable published version                       ||
-||  libxml2  ||  2.14.5   ||  2025-07-15  ||  MIT     ||  [libxml2]http://www.xmlsoft.org/downloads.html   ||      Latest stable published version                       ||
-||  curl     ||  8.15.0   ||  2025-07-16  ||  MIT/X   ||  [Curl]https://curl.se/download.html              ||      Latest stable published version                       ||
+| Name           | Version | Release Date | License (SPDX) | Site                                                   |Linking Method | Notes                                                                  |
+| -------------- | ------- | ------------ | -------------- | ------------------------------------------------------ |  ------------ | ---------------------------------------------------------------------- |
+| gmp            | 6.3.0   | 2023-07-30   | LGPL-3.0       | [GMP](https://gmplib.org/)                             | dynamic | © Free Software Foundation, Inc. — Latest stable published version     |
+|  openssl        |     3.6.0     |  2025-10-01   | Apache-2.0     | [OpenSSL](https://www.openssl.org/source/)             | static | © The OpenSSL Project — Latest stable published is v3.6.0                |
+|  libxml2        |    2.15.1     |  2025-10-16   | MIT            | [libxml2](http://www.xmlsoft.org/downloads.html)       | static | © Daniel Veillard and Contributors — Latest stable published is v2.15.1   |
+| curl           | 8.16.0  | 2025-09-10   | MIT            | [Curl](https://curl.se/download.html)                  | static | © Daniel Stenberg, curl contributors — Latest stable published version |
+| sw_mikey_sakke | 1.3.5  | 2025-11-06   | LGPL-2.0       | [GitHub](https://github.com/Streamwide/sw_mikey_sakke) | dynamic | © Streamwide SA — Maintained fork with LGPL 2.0 compliance (based on minisip-mikey-sakke & libmikey-sakke)             |

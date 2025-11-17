@@ -22,6 +22,9 @@ struct mikey_sakke_kms_response {
     char*  kms_req_url;
 };
 
+const char* mikey_sakke_get_version();
+const char* mikey_sakke_get_revision();
+
 struct mikey_sakke_kms_response* mikey_sakke_kms_response_create();
 void                             mikey_sakke_kms_response_destroy(struct mikey_sakke_kms_response* resp);
 

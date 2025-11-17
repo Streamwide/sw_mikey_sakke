@@ -1,5 +1,6 @@
 #include <libmutil/Logger.h>
 #include <libmutil/versions.h>
+#include <mikeysakke4c.h>
 
 #ifdef USE_SPDLOG
 #include <string>
