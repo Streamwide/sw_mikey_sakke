@@ -58,6 +58,7 @@ class LIBMIKEY_API MikeyPayloadT : public MikeyPayload {
     bool    checkOffset(uint64_t max);
 
     uint64_t ts();
+    int      tsType();
 
   private:
     int      tsTypeValue;

@@ -7,7 +7,7 @@ TEST(imessage_gen, csk) {
     mikey_sakke_set_log_level("warning");
     MIKEY_SAKKE_LOGW("Request keys associated with alice@org.com and generate a CSK I-Message for gms@streamwide.com");
     mikey_sakke_key_material_t* keys         = mikey_sakke_alloc_key_material("runtime:empty");
-    km_client_t*                alice_client = mikey_sakke_client_create("192.168.4.101", false, keys, 1500);
+    km_client_t*                alice_client = mikey_sakke_client_create("127.0.0.1", false, keys, 1500);
     const char                  alice_uri[]  = "alice@org.com";
     mikey_sakke_user_t*         alice_user   = mikey_sakke_alloc_user(alice_uri, keys);
 

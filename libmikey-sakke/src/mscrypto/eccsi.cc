@@ -96,7 +96,7 @@ bool Sign(uint8_t const* msg, size_t msg_len, uint8_t* sign_out, size_t sign_len
     OctetString const& PVT = keys->GetPublicKey(identifier_str, "PVT");
     MIKEY_SAKKE_LOGD("Sign ECCSI with identifier<%s> and PVT<%s>", identifier_str.c_str(), PVT.translate().c_str());
 
-    if (PVT.octets[0] != 0x04) {
+    if (PVT.empty() || PVT.octets[0] != 0x04) {
         MIKEY_SAKKE_LOGE("Key invalid format. Must be uncompressed data.");
         return false;
     }

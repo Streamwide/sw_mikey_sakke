@@ -33,9 +33,18 @@
 
 #include <mskms/client-fwd.h>
 
+#include <KMClient.h>
+
+#define FIND_PERIOD_MAX_GAP 32
+#define MIKEY_SAKKE_UID_LEN 64
+
 typedef struct mikey_clear_info
 {
   uint32_t  key_id;
+  uint32_t  creationTimeNtp;
+  char      initiatorId[MIKEY_SAKKE_UID_LEN+1];
+  char      responderId[MIKEY_SAKKE_UID_LEN+1];
+  bool      uidFilled;
 } mikey_clear_info_t;
 
 
@@ -71,7 +80,9 @@ class LIBMIKEY_API Mikey : public MObject {
     /* Key management handling */
     // Initiator methods
     bool displayIMessageInfo(const std::string& message);
+    static void getClearInfo(MRef<MikeyMessage*>& message, mikey_clear_info_t& info);
     bool getClearInfo(const std::string& message, mikey_clear_info_t& ret);
+    uint32_t    inferKeyPeriodNo(mikey_clear_info_t* clearInfo, const char* from_uri);
     std::string initiatorCreate(int kaType, const std::string& peerUri = "", struct key_agreement_params* params = nullptr);
     bool        initiatorAuthenticate(std::string message);
     std::string initiatorParse();
@@ -88,6 +99,9 @@ class LIBMIKEY_API Mikey : public MObject {
     std::string         authError() const;
     MRef<KeyAgreement*> getKeyAgreement() const;
 
+    void                enableKeyMatAutoDownload(KMClient* client);
+    void                disableKeyMatAutoDownload();
+
     void addSender(uint32_t ssrc);
 
     const std::string& peerUri() const;
@@ -96,7 +110,7 @@ class LIBMIKEY_API Mikey : public MObject {
     void setState(State newState);
 
   private:
-    void createKeyAgreement(int type);
+    void createKeyAgreement(int type, uint32_t keyPeriodNo);
     void addStreamsToKa();
 
     State               state {STATE_START};
@@ -104,6 +118,7 @@ class LIBMIKEY_API Mikey : public MObject {
     MRef<IMikeyConfig*> config;
     Streams             mediaStreamSenders;
     MRef<KeyAgreement*> ka;
+    KMClient*           kmsClient;
 };
 
 #endif

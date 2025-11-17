@@ -37,6 +37,11 @@
 #include <libmikey/MikeyException.h>
 #include <libmikey/MikeyMessage.h>
 #include <libmikey/MikeyPayloadHDR.h>
+#include <libmikey/MikeyPayloadT.h>
+#include <libmikey/MikeyPayloadID.h>
+#include <mskms/key-storage.h>
+
+#include <inttypes.h>
 
 #ifdef _WIN32_WCE
 #include "../include/minisip_wce_extra_includes.h"
@@ -54,8 +59,12 @@ using namespace std;
 
 IMikeyConfig::~IMikeyConfig() = default;
 
-Mikey::Mikey(MRef<IMikeyConfig*> aConfig):  config(aConfig) {}
-Mikey::Mikey(): config(nullptr) {}
+Mikey::Mikey(MRef<IMikeyConfig*> aConfig):  config(aConfig) {
+    kmsClient = 0;
+}
+Mikey::Mikey(): config(nullptr) {
+    kmsClient = 0;
+}
 
 Mikey::~Mikey() = default;
 
@@ -95,9 +104,152 @@ bool Mikey::displayIMessageInfo(const string& message) {
     return ret;
 }
 
+uint32_t Mikey::inferKeyPeriodNo(mikey_clear_info_t* clearInfo, const char* from_uri) {
+    MikeySakkeKMS::KeyAccessPtr keyStore = config->getKeys();
+    uint32_t periodNoInKeys = 0;
+    uint32_t ret = 0;
+
+    // 1. Gather all inputs
+    std::vector<std::string> const& communities = keyStore->GetCommunityIdentifiers();
+
+    if (communities.empty()) {
+        MIKEY_SAKKE_LOGE("community not configured, cannot validate infer keyPeriodNo");
+    }
+    std::string const community = communities[0];
+
+    if (keyStore->GetPublicParameter(community, "UserKeyPeriod").empty()) {
+        throw MikeyException("Keystore not initialized: UserKeyPeriod empty");
+    }
+    if (keyStore->GetPublicParameter(community, "UserKeyOffset").empty()) {
+        throw MikeyException("Keystore not initialized: UserKeyOffset empty");
+    }
+
+    auto periodNoInKeysStr = keyStore->GetPublicParameter(community, "UserKeyPeriodNoSet");
+    if (!periodNoInKeysStr.empty()) {
+        periodNoInKeys = std::stoi(periodNoInKeysStr);
+    }
+
+    uint32_t    userKeyPeriod = std::stoi(keyStore->GetPublicParameter(community, "UserKeyPeriod"));
+    uint32_t    userKeyOffset = std::stoi(keyStore->GetPublicParameter(community, "UserKeyOffset"));
+    std::string kmsUri        = keyStore->GetPublicParameter(community, "KmsUri");
+    if (kmsUri.empty()) {
+        throw MikeyException("Keystore not initialized: KmsUri empty");
+    }
+
+    MIKEY_SAKKE_LOGD("[inferKeyPeriodNo] Input are from_uri[%s], to_uri[%s], kms[%s], userKeyPeriod[%d], userKeyPeriodOffset[%d] periodNoInKeys[%d],\ninitiatorId[%s]\nresponderId[%s]"
+        , from_uri, config->getUri().c_str(), kmsUri.c_str(), userKeyPeriod, userKeyOffset, periodNoInKeys, clearInfo->initiatorId, clearInfo->responderId);
+    OctetString initiatorIdCalculated, responderIdCalculated;
+
+    // XXX Potential int32 overflow ?
+    uint32_t keyPeriodNoFromTimestamp = ((uint64_t)clearInfo->creationTimeNtp + (uint64_t)userKeyOffset) / userKeyPeriod;
+
+    uint32_t periodNoGap = 0;
+    for (periodNoGap = 0; periodNoGap < FIND_PERIOD_MAX_GAP; periodNoGap++) {
+
+        for (int sense = 1; sense > -2; sense -= 2) {
+
+            MIKEY_SAKKE_LOGV("[inferKeyPeriodNo] KeyPeriodNoFromTimestamp %d, %d, %d", keyPeriodNoFromTimestamp, periodNoGap, sense);
+            if ((sense > 0 || keyPeriodNoFromTimestamp >= periodNoGap) && !(periodNoGap == 0 && sense==-1)) {
+                // Verify -x / +x based on the I-MESSAGE creation date
+                initiatorIdCalculated   = genMikeySakkeUid(from_uri, kmsUri, userKeyPeriod, userKeyOffset, keyPeriodNoFromTimestamp + periodNoGap * sense);
+                responderIdCalculated   = genMikeySakkeUid(config->getUri(), kmsUri, userKeyPeriod, userKeyOffset, keyPeriodNoFromTimestamp + periodNoGap * sense);
+
+                if (strncmp(initiatorIdCalculated.translate().c_str(), clearInfo->initiatorId, MIKEY_SAKKE_UID_LEN) == 0) {
+                    MIKEY_SAKKE_LOGD("[inferKeyPeriodNo] Initiator-UID matched with gap=%d and periodNo=%d (current configured one is %d)", periodNoGap, keyPeriodNoFromTimestamp+periodNoGap*sense, periodNoInKeys);
+                    if (strncmp(responderIdCalculated.translate().c_str(), clearInfo->responderId, MIKEY_SAKKE_UID_LEN) == 0) {
+                        MIKEY_SAKKE_LOGD("[inferKeyPeriodNo] Responder-UID matched with gap=%d and periodNo=%d (current configured one is %d)", periodNoGap, keyPeriodNoFromTimestamp+periodNoGap*sense, periodNoInKeys);
+                        ret = keyPeriodNoFromTimestamp+periodNoGap*sense;
+                        periodNoGap = FIND_PERIOD_MAX_GAP;
+                        break;
+                    } else {
+                        MIKEY_SAKKE_LOGE("[inferKeyPeriodNo] Unexpected match (initiator-uid does match but not responder-uid) with gap=%d and periodNo=%d (current configured one is %p)", periodNoGap, keyPeriodNoFromTimestamp+periodNoGap, periodNoInKeys);
+                    }
+                }
+            }
+
+            MIKEY_SAKKE_LOGV("[inferKeyPeriodNo] periodNoInKeys %d, %d, %d", periodNoInKeys, periodNoGap, sense);
+            if (periodNoInKeys + periodNoGap * sense < keyPeriodNoFromTimestamp - FIND_PERIOD_MAX_GAP || periodNoInKeys + periodNoGap * sense > keyPeriodNoFromTimestamp + FIND_PERIOD_MAX_GAP) {
+                // No need to redo the same check when keyPeriodNoFromTimestamp +/- gap already cover the periodNos
+                if (periodNoGap < FIND_PERIOD_MAX_GAP && (sense > 0 || periodNoInKeys >= periodNoGap) && !(periodNoGap == 0 && sense==-1)) {
+                    // Verify -x / +x based on the I-MESSAGE periodNo set in keyStore
+                    initiatorIdCalculated   = genMikeySakkeUid(from_uri, kmsUri, userKeyPeriod, userKeyOffset, periodNoInKeys + periodNoGap * sense);
+                    responderIdCalculated   = genMikeySakkeUid(config->getUri(), kmsUri, userKeyPeriod, userKeyOffset, periodNoInKeys + periodNoGap * sense);
+
+                    if (strncmp(initiatorIdCalculated.translate().c_str(), clearInfo->initiatorId, MIKEY_SAKKE_UID_LEN) == 0) {
+                        MIKEY_SAKKE_LOGD("[inferKeyPeriodNo] Initiator-UID matched with gap=%d and periodNo=%d (current configured one is %p)", periodNoGap, periodNoInKeys+periodNoGap*sense, periodNoInKeys);
+                        if (strncmp(responderIdCalculated.translate().c_str(), clearInfo->responderId, MIKEY_SAKKE_UID_LEN) == 0) {
+                            MIKEY_SAKKE_LOGD("[inferKeyPeriodNo] Responder-UID matched with gap=%d and periodNo=%d (current configured one is %p)", periodNoGap, periodNoInKeys+periodNoGap*sense, periodNoInKeys);
+                            ret = periodNoInKeys+periodNoGap*sense;
+                            periodNoGap = FIND_PERIOD_MAX_GAP;
+                            break;
+                        } else {
+                            MIKEY_SAKKE_LOGE("[inferKeyPeriodNo] Unexpected match (initiator-uid does match but not responder-uid) with gap=%d and periodNo=%d (current configured one is %p)", periodNoGap, periodNoInKeys+periodNoGap, periodNoInKeys);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (ret == 0 && periodNoGap >= FIND_PERIOD_MAX_GAP) {
+        MIKEY_SAKKE_LOGE("[inferKeyPeriodNo] Could not infer correctly keyPeriodNo, back to default (user entry)");
+        ret = periodNoInKeys ? periodNoInKeys : keyPeriodNoFromTimestamp;
+    }
+
+    return ret;
+}
+
+void Mikey::getClearInfo(MRef<MikeyMessage*>& message, mikey_clear_info_t& info) {
+    info.initiatorId[0] = '\0';
+    info.responderId[0] = '\0';
+
+    // Gather the important informations
+    MRef<MikeyPayload*> hdrpl = message->extractPayload(MIKEYPAYLOAD_HDR_PAYLOAD_TYPE);
+    auto*               hdr   = static_cast<MikeyPayloadHDR*>(*hdrpl);
+    info.key_id               = hdr->csbId(); // This is a GUK-ID in case of a GMK
+    MRef<MikeyPayload*> tpl = message->extractPayload(MIKEYPAYLOAD_T_PAYLOAD_TYPE);
+    auto*               timestamp   = static_cast<MikeyPayloadT*>(*tpl);
+    if (timestamp->tsType() != T_TYPE_NTP_UTC) {
+        MIKEY_SAKKE_LOGE("ClearInfo: ERROR on PayloadT, time is not provided in NTP_UTC, periodNo might be affected (but continuing...)");
+    }
+    info.creationTimeNtp = (timestamp->ts() >> 32);
+    if (info.creationTimeNtp < NTP_EPOCH_OFFSET) {
+        MIKEY_SAKKE_LOGE("ClearInfo: ERROR on PayloadT, time seems not in NTP format, resetting");
+    }
+
+    MRef<MikeyPayload*> initiatorpl = message->extractPayloadIdr(MIKEYPAYLOAD_ID_ROLE_UID_INITIATOR);
+    if (initiatorpl.isNull()) {
+        initiatorpl = message->extractPayloadIdr(MIKEYPAYLOAD_ID_ROLE_INITIATOR);
+    }
+    auto*               initiator   = static_cast<MikeyPayloadID*>(*initiatorpl);
+    if (initiator->idLength() == 32) {
+        OctetString tmp = OctetString {(uint32_t)(initiator->idLength()), initiator->idData()};
+        memcpy(info.initiatorId, tmp.translate().c_str(), tmp.size()*2);
+        info.initiatorId[64] = '\0';
+    }
+    MRef<MikeyPayload*> responderpl = message->extractPayloadIdr(MIKEYPAYLOAD_ID_ROLE_UID_RESPONDER);
+    if (responderpl.isNull()) {
+        responderpl = message->extractPayloadIdr(MIKEYPAYLOAD_ID_ROLE_INITIATOR);
+    }
+    auto*               responder   = static_cast<MikeyPayloadID*>(*responderpl);
+    if (responder->idLength() == 32) {
+        OctetString tmp = OctetString {(uint32_t)(responder->idLength()), responder->idData()};
+        memcpy(info.responderId, tmp.translate().c_str(), tmp.size()*2);
+        info.responderId[64] = '\0';
+    }
+
+    // Display for log
+    long int seconds = info.creationTimeNtp - NTP_EPOCH_OFFSET;
+    char timestr_sec[] = "YYYY-mm-ddTHH:MM:ss.SSSZ";
+    std::strftime(timestr_sec, sizeof(timestr_sec) - 1,
+                "%Y-%m-%dT%H:%M:%S.000Z", std::gmtime(&seconds) ) ;
+    MIKEY_SAKKE_LOGI("ClearInfo: creationTime[%" PRIu64 "] => UNIX [%u], => ISO 8601[%s]", timestamp->ts(), info.creationTimeNtp - NTP_EPOCH_OFFSET, timestr_sec);
+}
+
 bool Mikey::getClearInfo(const string& message, mikey_clear_info_t& info) {
     bool ret = false;
 
+    info.initiatorId[0] = '\0';
+    info.responderId[0] = '\0';
     if (message.substr(0, 6) == "mikey ") {
         string b64Message = message.substr(6, message.length() - 6);
 
@@ -106,17 +258,7 @@ bool Mikey::getClearInfo(const string& message, mikey_clear_info_t& info) {
         else {
             try {
                 MRef<MikeyMessage*> init_mes = MikeyMessage::parse(b64Message);
-
-                /*  In the future: Re-used the KeyAgreementSAKKE::authenticate() method
-                    with a "no key provided" method
-                ka->setInitiatorData(init_mes);
-                if (init_mes->authenticate(*ka)) {
-                    string msg = "Authentication of the MIKEY init message failed: " + ka->authError();
-                    throw MikeyExceptionAuthentication(msg.c_str());
-                }*/
-                MRef<MikeyPayload*> hdrpl = init_mes->extractPayload(MIKEYPAYLOAD_HDR_PAYLOAD_TYPE);
-                auto*               hdr   = static_cast<MikeyPayloadHDR*>(*hdrpl);
-                info.key_id = hdr->csbId();
+                getClearInfo(init_mes, info);
 
                 ret = true;
             } catch (MikeyException& exc) {
@@ -143,7 +285,13 @@ bool Mikey::responderAuthenticate(const string& message, const string& peerUri, 
         else {
             try {
                 MRef<MikeyMessage*> init_mes = MikeyMessage::parse(b64Message);
-                createKeyAgreement(init_mes->keyAgreementType());
+                uint32_t keyPeriodNo = 0;
+                if (init_mes->keyAgreementType() == KEY_AGREEMENT_TYPE_SAKKE) {
+                    mikey_clear_info_t info;
+                    Mikey::getClearInfo(init_mes, info);
+                    keyPeriodNo = inferKeyPeriodNo(&info, peerUri.c_str());
+                }
+                createKeyAgreement(init_mes->keyAgreementType(), keyPeriodNo);
                 if (!ka) {
                     throw MikeyException("Can't handle key agreement");
                 }
@@ -155,7 +303,7 @@ bool Mikey::responderAuthenticate(const string& message, const string& peerUri, 
                 // is performed later within authenticate() method
                 init_mes->keyParameters(NULL);
 
-                if (init_mes->authenticate(*ka)) {
+                if (init_mes->authenticate(*ka) == false) {
                     string msg = "Authentication of the MIKEY init message failed: " + ka->authError();
                     throw MikeyExceptionAuthentication(msg.c_str());
                 }
@@ -257,14 +405,13 @@ string Mikey::initiatorCreate(int type, const string& peerUri, struct key_agreem
     setState(STATE_INITIATOR);
 
     try {
-        createKeyAgreement(type);
+        createKeyAgreement(type, 0);
         if (!ka) {
             throw MikeyException("Can't create key agreement");
         }
 
         ka->setPeerUri(peerUri);
         message = ka->createMessage(params);
-
         string b64Message = message->b64Message();
         MIKEY_SAKKE_LOGD("Created I-Message : %s", b64Message.c_str());
         return "mikey " + b64Message;
@@ -289,7 +436,7 @@ bool Mikey::initiatorAuthenticate(string message) {
                 MRef<MikeyMessage*> resp_mes = MikeyMessage::parse(message);
                 ka->setResponderData(resp_mes);
 
-                if (resp_mes->authenticate(*ka)) {
+                if (resp_mes->authenticate(*ka) == false) {
                     throw MikeyExceptionAuthentication("Authentication of the response message failed");
                 }
 
@@ -441,7 +588,7 @@ void Mikey::setState(State newState) {
     state = newState;
 }
 
-void Mikey::createKeyAgreement(int type) {
+void Mikey::createKeyAgreement(int type, uint32_t keyPeriodNo) {
     ka = NULL;
 
     if (!config->isMethodEnabled(type)) {
@@ -450,7 +597,7 @@ void Mikey::createKeyAgreement(int type) {
 
     switch (type) {
         case KEY_AGREEMENT_TYPE_SAKKE:
-            ka = new KeyAgreementSAKKE(config->getKeys());
+            ka = new KeyAgreementSAKKE(config->getKeys(), kmsClient, keyPeriodNo);
             break;
         default:
             throw MikeyExceptionUnimplemented("Unsupported type of KA");
@@ -462,4 +609,11 @@ void Mikey::createKeyAgreement(int type) {
     if (isInitiator()) {
         addStreamsToKa();
     }
+}
+
+void Mikey::enableKeyMatAutoDownload(KMClient* client) {
+    kmsClient = client;
+}
+void Mikey::disableKeyMatAutoDownload() {
+    kmsClient = nullptr;
 }

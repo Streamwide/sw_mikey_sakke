@@ -111,6 +111,7 @@ class LIBMIKEY_API MikeyPayloads : public MObject {
 
     MRef<MikeyPayload*>       extractPayload(int type);
     MRef<const MikeyPayload*> extractPayload(int type) const;
+    MRef<MikeyPayload*>       extractPayloadIdr(int roleId);
     void                      remove(MRef<MikeyPayload*>);
 
     std::string b64Message();

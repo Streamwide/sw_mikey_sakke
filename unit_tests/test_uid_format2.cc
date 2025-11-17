@@ -11,7 +11,7 @@ TEST(test_uid_format2, generator) {
     MIKEY_SAKKE_LOG_SET_LEVEL("debug");
 
     std::string uri("alice@org.com");
-    std::string kmsUri("192.168.4.101:8080");
+    std::string kmsUri("127.0.0.1:8080");
     uint32_t    keyPeriod         = 2592000;
     uint32_t    key_period_offset = 0;
 

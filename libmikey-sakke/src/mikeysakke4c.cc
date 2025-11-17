@@ -195,6 +195,19 @@ char* kms_key_material_key_prov_get_pvt(struct kms_key_material_key_prov* key_pr
     return nullptr;
 }
 
+bool kms_key_material_set_period_no(mikey_sakke_key_material_t* keys, char* community, uint32_t period_no) {
+    if (!keys) {
+        MIKEY_SAKKE_LOGE("kms_key_material_set_period_no: keys provided is NULL");
+        return false;
+    }
+    if (!community) {
+        MIKEY_SAKKE_LOGE("kms_key_material_set_period_no: community provided is NULL");
+        return false;
+    }
+    mikey_sakke_set_public_parameter(keys, community, "UserKeyPeriodNoSet", std::to_string(period_no).c_str());
+    return true;
+}
+
 struct mikey_sakke_key_data* mikey_sakke_key_data_create() {
     auto* data = (struct mikey_sakke_key_data*)malloc(sizeof(struct mikey_sakke_key_data));
     if (!data) {
@@ -624,6 +637,16 @@ mikey_sakke_call_t* mikey_sakke_alloc_call(mikey_sakke_user_t* user) {
     return to_c(rc);
 }
 
+void mikey_sakke_set_key_material_auto_download(mikey_sakke_call_t* call, km_client_t* client, bool enable) {
+    if (call) {
+        if (enable) {
+            from_c(call)->enableKeyMatAutoDownload(from_c(client));
+        } else {
+            from_c(call)->disableKeyMatAutoDownload();
+        }
+    }
+}
+
 void mikey_sakke_free_call(mikey_sakke_call_t* call) {
     if (call)
         from_c(call)->decRefCount();
@@ -738,6 +761,14 @@ void key_agreement_params_delete(struct key_agreement_params* params) {
     delete[] params->key;
     delete[] params->key_id;
     delete params;
+}
+
+uint32_t mikey_sakke_get_key_period_no_from_imsg(mikey_sakke_call_t* call, mikey_key_mgmt_string input, char const* from_uri) {
+    MRef<Mikey*> mikey = from_c(call);
+    mikey_clear_info_t  ret;
+
+    mikey->getClearInfo(from_key_mgmt_string(input), ret);
+    return mikey->inferKeyPeriodNo(&ret, from_uri);
 }
 
 bool mikey_sakke_uas_auth(mikey_sakke_call_t* call, mikey_key_mgmt_string init, char const* from_uri, const char* from_id) {

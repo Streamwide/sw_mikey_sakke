@@ -445,6 +445,19 @@ MRef<const MikeyPayload*> MikeyPayloads::extractPayload(int payloadType) const {
     return NULL;
 }
 
+MRef<MikeyPayload*> MikeyPayloads::extractPayloadIdr(int roleId) {
+    list<MRef<MikeyPayload*>>::const_iterator i;
+
+    for (i = payloads.begin(); i != payloads.end(); ++i) {
+        if ((*i)->payloadType() == MIKEYPAYLOAD_IDR_PAYLOAD_TYPE) {
+            if (static_cast<MikeyPayloadID*>(**i)->idRole() == roleId) {
+                return *i;
+            }
+        }
+    }
+    return NULL;
+}
+
 void MikeyPayloads::remove(MRef<MikeyPayload*> payload) {
     list<MRef<MikeyPayload*>>::iterator i;
 

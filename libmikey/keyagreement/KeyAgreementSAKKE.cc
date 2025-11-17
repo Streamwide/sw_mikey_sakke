@@ -236,6 +236,43 @@ bool KeyAgreementSAKKE::ValidateKeyMaterial(KeyStoragePtr const& keys, std::stri
     return signing_keys_okay && rsk_okay;
 }
 
+void KeyAgreementSAKKE::autoDownloadKeys(uint32_t timestampPeriod, OctetString& user_id, uint32_t retries) {
+    bool needRetry = false;
+    if (kmsClient == nullptr) {
+        return;
+    }
+    if (retries == 0) {
+        MIKEY_SAKKE_LOGE("[autoDownloadKeys] Failed to autoDownload keys");
+        return;
+    }
+    if (this->getKeyMaterial()->GetPrivateKey(user_id.translate(), "SSK").empty() || this->getKeyMaterial()->GetPrivateKey(user_id.translate(), "RSK").empty()) {
+        // Execute request to KMS server only if correspond key is not already in KeyStore
+
+        request_params_t params {};
+        params.requested_key_timestamp = ((uint64_t)timestampPeriod) << 32;
+
+#ifdef HTTP_REQUEST_BY_CALLBACK
+        auto ret = kmsClient->sendRequest(request_type_e::KEY_PROV, &params, NULL, NULL);
+#else
+        auto ret = kmsClient->sendRequest(request_type_e::KEY_PROV, &params);
+#endif
+        if (ret == 0) {
+            // Check
+            MIKEY_SAKKE_LOGD("[autoDownloadKeys] Analyse results...");
+            if (kmsClient->getKeyProvResponse() == nullptr) {
+                MIKEY_SAKKE_LOGW("[autoDownloadKeys] Failing to parse response ? go retry");
+                needRetry = true;
+            }
+        } else {
+            needRetry = true;
+        }
+
+        if (needRetry) {
+            return autoDownloadKeys(timestampPeriod, user_id, retries - 1);
+        }
+    }
+}
+
 class MikeyPayloadSAKKE : public MikeyPayload {
   public:
     OctetString           SED;
@@ -344,6 +381,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
 
         auto*             tPayload = new MikeyPayloadT();
         MikeyPayloadRAND* randPayload;
+        uint32_t          tsNtp = (tPayload->ts() >> 32);
 
         std::vector<std::string> const& communities = keyStore->GetCommunityIdentifiers();
 
@@ -375,6 +413,9 @@ class MikeyMessageSAKKE : public MikeyMessage {
         } else {
             // Otherwise, use the specified period no
             uint32_t keyPeriodNo = std::stoi(keyPeriodNoStr);
+            if (keyPeriodNo != ((tsNtp - userKeyOffset) / userKeyPeriod)) {
+                MIKEY_SAKKE_LOGW("UserKeyPeriodNo(%zu) of KeyMaterial does not match creation date of PayloadT calculated PeriodNo(%zu), continuing at your own risk...", keyPeriodNo, (tsNtp - userKeyOffset) / userKeyPeriod);
+            }
             senderId             = genMikeySakkeUid(ka->uri(), kmsUri, userKeyPeriod, userKeyOffset, keyPeriodNo);
             peerId               = genMikeySakkeUid(ka->peerUri(), kmsUri, userKeyPeriod, userKeyOffset, keyPeriodNo);
         }
@@ -549,7 +590,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
 
         if (communities.empty()) {
             ka->setAuthError("No MIKEY-SAKKE user communities are known.");
-            return true;
+            return false;
         }
 
         // TODO: choose community ids appropriately
@@ -563,6 +604,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
             MIKEY_SAKKE_LOGE("Parameters not set, can't proceed with message auth.")
             MIKEY_SAKKE_LOGE("UserKeyPeriod : %s", UserKeyPeriodStr.c_str());
             MIKEY_SAKKE_LOGE("UserKeyOffset : %s", UserKeyOffsetStr.c_str());
+            ka->setAuthError("Parameters not set");
             return false;
         }
 
@@ -570,26 +612,22 @@ class MikeyMessageSAKKE : public MikeyMessage {
         uint32_t    userKeyOffset = std::stoi(UserKeyOffsetStr);
         std::string kmsUri        = keys->GetPublicParameter(senderCommunity, "KmsUri");
 
-        OctetString senderId, responderId;
-
-        // Hack of keyStore to be able to use a key that is not of the current period
-        auto keyPeriodNoStr = keys->GetPublicParameter(responderCommunity, "UserKeyPeriodNoSet");
-
-        if (keyPeriodNoStr.empty()) {
-            // If no particular period number was specified, let it compute the current period no
-            senderId    = genMikeySakkeUid(ka->peerUri(), kmsUri, userKeyPeriod, userKeyOffset);
-            responderId = genMikeySakkeUid(ka->uri(), kmsUri, userKeyPeriod, userKeyOffset);
-        } else {
-            // Otherwise, use the specified period no
-            uint32_t keyPeriodNo = std::stoi(keyPeriodNoStr);
-            senderId             = genMikeySakkeUid(ka->peerUri(), kmsUri, userKeyPeriod, userKeyOffset, keyPeriodNo);
-            responderId          = genMikeySakkeUid(ka->uri(), kmsUri, userKeyPeriod, userKeyOffset, keyPeriodNo);
-        }
+        // keyPeriodNo is infered at KeyAgreement creation & stored in private properties
+        OctetString senderId    = genMikeySakkeUid(ka->peerUri(), kmsUri, userKeyPeriod, userKeyOffset, ka->getKeyPeriodNo());
+        OctetString responderId = genMikeySakkeUid(ka->uri(), kmsUri, userKeyPeriod, userKeyOffset, ka->getKeyPeriodNo());
 
         MIKEY_SAKKE_LOGD("Sender URI    : %s", ka->peerUri().c_str());
         MIKEY_SAKKE_LOGD("Sender ID     : %s", senderId.translate().c_str());
         MIKEY_SAKKE_LOGD("Peer URI      : %s", ka->uri().c_str());
         MIKEY_SAKKE_LOGD("Peer ID       : %s", responderId.translate().c_str());
+        MIKEY_SAKKE_LOGD("keyPeriodNo   : %d", ka->getKeyPeriodNo());
+
+        ka->autoDownloadKeys(ka->getKeyPeriodNo()*userKeyPeriod+userKeyOffset, responderId, 10);
+        if (keys->GetPrivateKey(responderId.translate(), "SSK").empty() || keys->GetPrivateKey(responderId.translate(), "RSK").empty()) {
+            MIKEY_SAKKE_LOGE("No KeyMaterial set for keyperiodNo/id: %d/%s", ka->getKeyPeriodNo(), responderId.translate().c_str());
+            ka->setAuthError("Wrong KeyMaterials set");
+            return false;
+        }
 
         MRef<MikeyPayload*> hdrpl = extractPayload(MIKEYPAYLOAD_HDR_PAYLOAD_TYPE);
         auto*               hdr   = static_cast<MikeyPayloadHDR*>(*hdrpl);
@@ -598,7 +636,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
         // parsed in parseResponse() below, is purely to update the CS Id map
         // with the SSRCs of the responder's streams.
         if (hdr->dataType() == HDR_DATA_TYPE_SAKKE_RESP)
-            return false;
+            return true;
 
         ka->setnCs(hdr->nCs());
         ka->setCsbId(hdr->csbId());
@@ -621,7 +659,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
             // TODO: notify user that SAKKE payload is
             // TODO: not signed by the sender.
             ka->setAuthError("Anonymous sender for MIKEY-SAKKE key agreement is currently unsupported.");
-            return true;
+            return false;
         }
 
         MRef<MikeyPayload*> tpl = extractPayload(MIKEYPAYLOAD_T_PAYLOAD_TYPE);
@@ -653,7 +691,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
             MIKEY_SAKKE_LOGE("ECCSI signing VERIFICATION FAILED");
             ka->setAuthError("MIKEY-SAKKE message signature verification failed.");
             if (kaBase->eccsiSignatureValidation()) {
-                return true;
+                return false;
             } else {
                 MIKEY_SAKKE_LOGE("[WARNING DANGEROUS] ECCSI signature verification disabled, continuing...");
             }
@@ -666,7 +704,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
 
         if (!sakke) {
             ka->setAuthError("SAKKE payload not found in MIKEY-SAKKE message.");
-            return true;
+            return false;
         }
 
         OctetString                   SSV;
@@ -685,14 +723,14 @@ class MikeyMessageSAKKE : public MikeyMessage {
             } else {
                 MIKEY_SAKKE_LOGE("SAKKE encapsulated data could not be decrypted");
                 ka->setAuthError("Failed to extract TGK from SAKKE payload.");
-                return true;
+                return false;
             }
 
 
             if (hdr->csbId() && (SSV.size() != 16 && SSV.size() != 32)) {
                 MIKEY_SAKKE_LOGE("ERROR: csbID cannot be 0 && SSV size MUST be 16/32B long");
                 ka->setAuthError("Failed derivate SSV into DPCK to get keyParameters");
-                return true;
+                return false;
             }
             uint8_t csbIdData[4];
             csbIdData[0] = (hdr->csbId() & 0xFF000000) >> 24;
@@ -750,7 +788,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
             ka->setKfc(SSV.raw(), SSV.size());
         }
 
-        return false;
+        return true;
     }
 
     MRef<MikeyMessage*> buildResponse(KeyAgreement* ka) override {
@@ -837,10 +875,17 @@ MikeyMessage* CreateIncomingMessageSAKKE() {
     return new MikeyMessageSAKKE();
 }
 
-KeyAgreementSAKKE::KeyAgreementSAKKE(MikeySakkeKMS::KeyAccessPtr keys): KeyAgreement(), keys(std::move(keys)) {}
+KeyAgreementSAKKE::KeyAgreementSAKKE(MikeySakkeKMS::KeyAccessPtr keys, KMClient* kmsClientIn, uint32_t keyPeriodNoIn): KeyAgreement(), keys(std::move(keys)) {
+    keyPeriodNo = keyPeriodNoIn;
+    kmsClient = kmsClientIn;
+}
 
 MikeyMessage* KeyAgreementSAKKE::createMessage(struct key_agreement_params* params) {
     return new MikeyMessageSAKKE(this, params);
+}
+
+uint32_t KeyAgreementSAKKE::getKeyPeriodNo() {
+    return keyPeriodNo;
 }
 
 /** sets the TEK Generating Key*/

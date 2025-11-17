@@ -202,3 +202,7 @@ bool MikeyPayloadT::checkOffset([[maybe_unused]] uint64_t max) {
 uint64_t MikeyPayloadT::ts() {
     return tsValue;
 }
+
+int MikeyPayloadT::tsType() {
+    return tsTypeValue;
+}

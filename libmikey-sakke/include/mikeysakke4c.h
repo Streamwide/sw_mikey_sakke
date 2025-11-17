@@ -91,6 +91,8 @@ struct mikey_sakke_key_id {
 };
 typedef struct mikey_sakke_key_id      mikey_sakke_key_id_t;
 
+bool kms_key_material_set_period_no(mikey_sakke_key_material_t* keys, char* community, uint32_t period_no);
+
 struct mikey_sakke_key_data* mikey_sakke_key_data_create();
 void                         mikey_sakke_key_data_destroy(struct mikey_sakke_key_data* data);
 
@@ -220,6 +222,7 @@ mikey_sakke_user_t* mikey_sakke_alloc_user(char const* uri, mikey_sakke_key_mate
 void                mikey_sakke_free_user(mikey_sakke_user_t*);
 
 mikey_sakke_call_t* mikey_sakke_alloc_call(mikey_sakke_user_t*);
+void                mikey_sakke_set_key_material_auto_download(mikey_sakke_call_t* call, km_client_t* client, bool enable);
 void                mikey_sakke_free_call(mikey_sakke_call_t*);
 
 void mikey_sakke_free_key_mgmt_string(mikey_key_mgmt_string_t);
@@ -250,6 +253,7 @@ bool                    mikey_sakke_uas_auth(mikey_sakke_call_t*, mikey_key_mgmt
 bool                    mikey_sakke_uas_auth_str(mikey_sakke_call_t*, const char* init_str, const char* from_uri, const char* from_id);
 mikey_key_mgmt_string_t mikey_sakke_uas_resp(mikey_sakke_call_t*);
 bool                    mikey_sakke_uac_auth(mikey_sakke_call_t*, mikey_key_mgmt_string_t resp);
+uint32_t                mikey_sakke_get_key_period_no_from_imsg(mikey_sakke_call_t* call, struct mikey_key_mgmt_string input, const char* from_uri);
 
 /**
  * Allocates and generates a key_agreement_params struct with the following parameters

@@ -22,6 +22,7 @@
 #include <libmikey/KeyAgreement.h>
 #include <libmikey/libmikey_config.h>
 #include <mskms/client-fwd.h>
+#include <KMClient.h>
 
 #include <optional>
 
@@ -37,7 +38,7 @@ OctetString genMikeySakkeUid(std::string uri, std::string kms_uri, uint32_t key_
 
 class LIBMIKEY_API KeyAgreementSAKKE : public KeyAgreement {
   public:
-    explicit KeyAgreementSAKKE(MikeySakkeKMS::KeyAccessPtr);
+    explicit KeyAgreementSAKKE(MikeySakkeKMS::KeyAccessPtr, KMClient* kmsClient, uint32_t keyPeriodNo);
     // ~KeyAgreementSAKKE();
 
   public:
@@ -56,12 +57,16 @@ class LIBMIKEY_API KeyAgreementSAKKE : public KeyAgreement {
 
   public: // client utilities
     static bool ValidateKeyMaterial(MikeySakkeKMS::KeyStoragePtr const& keys, std::string const& identifier, std::string* error_text);
+    void        autoDownloadKeys(uint32_t timestampPeriod, OctetString& user_id, uint32_t retries);
+    uint32_t    getKeyPeriodNo();
 
   protected:
     KeyAgreementSAKKE();
 
   private:
     MikeySakkeKMS::KeyAccessPtr keys;
+    KMClient*                   kmsClient;
+    uint32_t                    keyPeriodNo;
 };
 
 #endif

@@ -145,7 +145,12 @@ void PF_p_pow(bigint const& p, PF_p& R, PF_p_const A, bigint const& n) {
 }
 //=============================================================================
 
-inline MikeySakkeCrypto::SakkeParameterSet const GetParamSet(std::string const& community, MikeySakkeKMS::KeyAccessPtr const& keys, int keyLen=16) {
+#if defined(__GNUC__) && !defined(__clang__)
+# pragma GCC diagnostic push
+# pragma GCC diagnostic ignored "-Wdangling-reference"
+#endif
+
+inline MikeySakkeCrypto::SakkeParameterSet const& GetParamSet(std::string const& community, MikeySakkeKMS::KeyAccessPtr const& keys, int keyLen=16) {
     if (keys->GetPublicParameter(community, "SakkeSet") != "1")
         throw std::invalid_argument("Only SAKKE parameter set 1 is supported.");
     if (keyLen == 32) {
@@ -153,6 +158,10 @@ inline MikeySakkeCrypto::SakkeParameterSet const GetParamSet(std::string const& 
     }
     return MikeySakkeCrypto::sakke_param_set_1();
 }
+
+#if defined(__GNUC__) && !defined(__clang__)
+# pragma GCC diagnostic pop
+#endif
 
 //=============================================================================
 // Scratch holder for elements of E(F_p)[q]
@@ -316,7 +325,7 @@ void ComputePairing(SakkeParameterSet const& params, bigint& w, ECC::Point<bigin
 //=============================================================================
 
 bool ValidateReceiverSecretKey(const OctetString& identifier, std::string const& community, MikeySakkeKMS::KeyStoragePtr const& keys) {
-    SakkeParameterSet const params = GetParamSet(community, keys);
+    SakkeParameterSet const& params = GetParamSet(community, keys);
 
     // RFC6508 6.1.2
     //
@@ -373,7 +382,7 @@ bool ValidateReceiverSecretKey(const OctetString& identifier, std::string const&
     ComputePairing(params, w, a_P_plus_Z, ecp_RSK);
 
     if (w == params.g) {
-        MIKEY_SAKKE_LOGD("Successfuly validated Secret Sey for %s", identifier.translate().c_str());
+        MIKEY_SAKKE_LOGD("Successfuly validated Secret Key for %s", identifier.translate().c_str());
         return true;
     }
 
