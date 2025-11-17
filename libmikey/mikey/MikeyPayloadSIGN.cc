@@ -80,8 +80,24 @@ void MikeyPayloadSIGN::writeData(uint8_t* start, int expectedLength) {
 }
 
 string MikeyPayloadSIGN::debugDump() {
-    return "MikeyPayloadSIGN: type=<" + itoa(sigTypeValue) + "> length=<" + itoa(sigLengthValue) + "> signature=<"
+    string ret = "MikeyPayloadSIGN: type=<";
+    switch (sigTypeValue) {
+        case MIKEYPAYLOAD_SIGN_TYPE_RSA_PKCS:
+            ret = ret + "RSA_PKCS";
+            break;
+        case MIKEYPAYLOAD_SIGN_TYPE_RSA_PSS:
+            ret = ret + "RSA_PSS";
+            break;
+        case MIKEYPAYLOAD_SIGN_TYPE_ECCSI:
+            ret = ret + "ECCSI";
+            break;
+        default:
+            ret = ret + "unknown ("+itoa(sigTypeValue)+")";
+    }
+    ret = ret + "> length=<" + itoa(sigLengthValue) + "> signature=<"
            + binToHex(sigDataPtr, sigLengthValue) + ">";
+
+    return ret;
 }
 
 int MikeyPayloadSIGN::sigLength() const {

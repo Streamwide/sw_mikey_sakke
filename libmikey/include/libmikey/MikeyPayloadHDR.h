@@ -31,6 +31,7 @@
 
 #include <list>
 
+//TODO: Missing DataType from RFC-6043-6.1
 #define HDR_DATA_TYPE_PSK_INIT 0
 #define HDR_DATA_TYPE_PSK_RESP 1
 #define HDR_DATA_TYPE_PK_INIT 2
@@ -47,11 +48,9 @@
 #define HDR_DATA_TYPE_CSID_RESP 27 // possible alternative 'more general' spelling for SAKKE_RESP
 
 #define HDR_PRF_MIKEY_1 0
-#define HDR_PRF_MIKEY_256 1
+#define HDR_PRF_MIKEY_256 1 // SHA-256 -> RFC-6043 Table 6.3
 #define HDR_PRF_MIKEY_384 2
 #define HDR_PRF_MIKEY_512 3
-
-#define HDR_CS_ID_MAP_TYPE_SRTP_ID 0
 
 #define MIKEYPAYLOAD_HDR_PAYLOAD_TYPE (-1)
 /**

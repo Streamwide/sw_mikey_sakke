@@ -465,6 +465,15 @@ void KeyAgreement::setnCs(uint8_t value) {
     nCsValue = value;
 }
 
+
+bool KeyAgreement::eccsiSignatureValidation() const {
+    return eccsiSignatureValidationValue;
+}
+
+void KeyAgreement::setEccsiSignatureValidation(const bool verif) {
+    eccsiSignatureValidationValue = verif;
+}
+
 uint8_t KeyAgreement::getSrtpCsId(uint32_t ssrc) {
     auto* csIdMap = dynamic_cast<MikeyCsIdMapSrtp*>(*csIdMapPtr);
 
@@ -578,7 +587,8 @@ static uint8_t ipsec4values[] = {MIKEY_IPSEC_SATYPE_ESP,
                                  MIKEY_IPSEC_AALG_SHA1HMAC,
                                  16};
 static uint8_t srtpvalues[]   = {
-      MIKEY_SRTP_EALG_AESCM, 16, MIKEY_SRTP_AALG_SHA1HMAC, 20, 14, MIKEY_SRTP_PRF_AESCM, 0, 1, 1, MIKEY_FEC_ORDER_FEC_SRTP, 1, 10, 0};
+      //MIKEY_SRTP_EALG_AESCM, 16, MIKEY_SRTP_AALG_SHA1HMAC, 20, 14, MIKEY_SRTP_PRF_AESCM, 0, 1, 1, MIKEY_FEC_ORDER_FEC_SRTP, 1, 10, 0}; // Default SRTP ?
+      MIKEY_SRTP_EALG_AESGCM, 16, MIKEY_SRTP_AALG_RCCM3, 20, 12, MIKEY_SRTP_PRF_AESCM, 0, 1, 1, MIKEY_FEC_ORDER_FEC_SRTP, 1, 10, 0, 1, 0, 0, 0, 0, 4, 0, 16}; // Default SRTP with KMS (TS-33.180)
 
 uint8_t KeyAgreement::setdefaultPolicy(uint8_t prot_type) {
     list<Policy_type*>::iterator iter;
@@ -594,9 +604,11 @@ uint8_t KeyAgreement::setdefaultPolicy(uint8_t prot_type) {
     int i, arraysize;
     switch (prot_type) {
         case MIKEY_PROTO_SRTP:
-            arraysize = 13;
+            arraysize = 21;
             for (i = 0; i < arraysize; ++i)
-                policy.push_back(new Policy_type(policyNo, prot_type, i, 1, &srtpvalues[i]));
+                if (!(i == 3 || i == 13 || (i >= 7 && i <= 17))) { // These IDs are "unknown" in our db && in TS-33.180 $E.2.2-1, let's not include & avoid confusing
+                    policy.push_back(new Policy_type(policyNo, prot_type, i, 1, &srtpvalues[i]));
+                }
             break;
         case MIKEY_PROTO_IPSEC4:
             arraysize = 7;

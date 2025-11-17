@@ -571,7 +571,7 @@ bool mikey_sakke_validate_signing_keys_old(const char* identifier, size_t identi
 
 mikey_sakke_user_t* mikey_sakke_alloc_user(char const* uri, mikey_sakke_key_material_t* keys) {
     struct MikeyUserConfig : public IMikeyConfig {
-        MikeyUserConfig(char const* uri, mikey_sakke_key_material_t* keys): uri(uri), keys(from_c(keys)) {}
+        MikeyUserConfig(char const* uri, mikey_sakke_key_material_t* keys): uri(uri), keys(from_c(keys)), payloadSignatureValidationValue(true) {}
 
         KeyAccessPtr getKeys() const override {
             return keys;
@@ -596,8 +596,17 @@ mikey_sakke_user_t* mikey_sakke_alloc_user(char const* uri, mikey_sakke_key_mate
             return false;
         }
 
+        bool payloadSignatureValidation() const override {
+            return payloadSignatureValidationValue;
+        }
+
+        void setPayloadSignatureValidation(const bool verif) override {
+            payloadSignatureValidationValue = verif;
+        }
+
         std::string                 uri;
         MikeySakkeKMS::KeyAccessPtr keys;
+        bool                        payloadSignatureValidationValue;
     };
     MRef<IMikeyConfig*> rc(new MikeyUserConfig(uri, keys));
     rc->incRefCount();
@@ -627,6 +636,10 @@ void mikey_sakke_free_key_mgmt_string(mikey_key_mgmt_string s) {
 void mikey_sakke_add_sender_stream(mikey_sakke_call_t* call, uint32_t ssrc) {
     MIKEY_SAKKE_LOGD("Added sender stream %u", ssrc);
     from_c(call)->addSender(ssrc);
+}
+
+void mikey_sakke_set_payload_signature_validation(mikey_sakke_user_t* user, bool valid) {
+    from_c(user)->setPayloadSignatureValidation(valid);
 }
 
 mikey_key_mgmt_string mikey_sakke_uac_init(mikey_sakke_call_t* call, char const* to_uri) {

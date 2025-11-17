@@ -225,6 +225,7 @@ void                mikey_sakke_free_call(mikey_sakke_call_t*);
 void mikey_sakke_free_key_mgmt_string(mikey_key_mgmt_string_t);
 
 void mikey_sakke_add_sender_stream(mikey_sakke_call_t*, uint32_t ssrc);
+void mikey_sakke_set_payload_signature_validation(mikey_sakke_user_t* call, bool valid);
 
 /**
  * Initializes a group session with the provided URI as a target

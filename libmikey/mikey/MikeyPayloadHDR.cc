@@ -28,6 +28,7 @@
 #include <libmikey/MikeyCsIdMap.h>
 #include <libmikey/MikeyException.h>
 #include <libmikey/MikeyPayloadHDR.h>
+#include <libmikey/MikeyKeyParameters.h>
 #include <libmutil/stringutils.h>
 
 using namespace std;
@@ -43,14 +44,14 @@ MikeyPayloadHDR::MikeyPayloadHDR(int dataType, int v, int prfFunc, uint32_t csbI
     this->nCsValue         = nCs;
     this->prfFunc          = prfFunc;
     this->csbIdValue       = csbId;
-    if (mapType == HDR_CS_ID_MAP_TYPE_SRTP_ID || mapType == HDR_CS_ID_MAP_TYPE_IPSEC4_ID) {
+    if (mapType == HDR_CS_ID_MAP_TYPE_SRTP_ID || mapType == HDR_CS_ID_MAP_TYPE_IPSEC4_ID || mapType == HDR_CS_ID_MAP_TYPE_GENERIC_ID || mapType == HDR_CS_ID_MAP_TYPE_EMPTY) {
         this->csIdMapTypeValue = mapType;
         this->csIdMapPtr       = map;
     } else {
         throw MikeyExceptionMessageContent("Unknown CS ID map type");
     }
 
-    if (!csIdMapPtr) {
+    if (!csIdMapPtr && mapType != HDR_CS_ID_MAP_TYPE_EMPTY) {
         throw MikeyExceptionMessageContent("Missing CS ID map");
     }
 }
@@ -86,16 +87,29 @@ MikeyPayloadHDR::MikeyPayloadHDR(uint8_t* start, int lengthLimit): MikeyPayload(
         /* This is a valid case too, see TS 33.180 § E.1.2*/
         this->csIdMapPtr = new MikeyCsIdMapSrtp(nullptr, 0);
         this->endPtr     = startPtr + 10;
+    } else if (/*this->nCsValue > 0 && */this->csIdMapTypeValue == HDR_CS_ID_MAP_TYPE_GENERIC_ID) {
+        if (this->nCsValue == 0) {
+            MIKEY_SAKKE_LOGE("[HDR] 3GPP inconsistance: if HDR_CS_ID_MAP_TYPE_GENERIC_ID, #CS must > 0 (but=%d)", this->nCsValue);
+            this->csIdMapPtr = new MikeyCsIdMapSrtp(nullptr, 0);
+            this->endPtr     = startPtr + 10;
+        } else {
+            //=this->csIdMapPtr = new MikeyCsIdMapGenericId(&start[10], 12 * nCsValue);
+            this->csIdMapPtr = new MikeyCsIdMapGenericId(&start[10], lengthLimit);
+            this->endPtr     = startPtr + 10 + this->csIdMapPtr->length();
+        }
     } else {
         this->csIdMapPtr = NULL;
+        MIKEY_SAKKE_LOGE("[HDR] 3GPP inconsistance: #CS[%d] with csIdMapType[%d]", this->nCsValue, this->csIdMapTypeValue);
         throw MikeyExceptionMessageContent("Unknown type of CS_ID_map");
     }
+    OctetString out = OctetString {(uint32_t)(10+(!csIdMapPtr.isNull() ? csIdMapPtr->length() : 0)), start};
+    MIKEY_SAKKE_LOGD("[HDR] Read: %s", out.translate().c_str());
 }
 
 MikeyPayloadHDR::~MikeyPayloadHDR() = default;
 
 int MikeyPayloadHDR::length() const {
-    return 10 + csIdMapPtr->length();
+    return 10 + (!csIdMapPtr.isNull() ? csIdMapPtr->length() : 0);
 }
 
 void MikeyPayloadHDR::writeData(uint8_t* start, int expectedLength) {
@@ -112,7 +126,11 @@ void MikeyPayloadHDR::writeData(uint8_t* start, int expectedLength) {
     start[7] = (uint8_t)(csbIdValue & 0xFF);
     start[8] = (uint8_t)nCsValue;
     start[9] = (uint8_t)csIdMapTypeValue;
-    csIdMapPtr->writeData(&start[10], csIdMapPtr->length());
+    if (!csIdMapPtr.isNull()) { // Can happen in case of HDR_CS_ID_MAP_TYPE_EMPTY
+        csIdMapPtr->writeData(&start[10], csIdMapPtr->length());
+    }
+    OctetString out = OctetString {(uint32_t)(10+(!csIdMapPtr.isNull() ? csIdMapPtr->length() : 0)), start};
+    MIKEY_SAKKE_LOGD("[HDR] Wrote: %s", out.translate().c_str());
 }
 
 string MikeyPayloadHDR::debugDump() {
@@ -175,21 +193,53 @@ string MikeyPayloadHDR::debugDump() {
             ret += "<MIKEY-512>";
             break;
     }
-
-    ret += " CSB_id=<" + itoa(csbIdValue) + ">";
+    uint32_t purposeTag = (csbIdValue & 0xF0000000) >> 28;
+    std::stringstream stream;
+    stream << std::hex << csbIdValue;
+    ret += " CSB_id=<" + stream.str();
+    switch (purposeTag) {
+        case (uint32_t)KeyParametersPayload::KeyType::GMK:
+            ret += " GMK>";
+            break;
+        case (uint32_t)KeyParametersPayload::KeyType::PCK:
+            ret += " PCK>";
+            break;
+        case (uint32_t)KeyParametersPayload::KeyType::CSK:
+            ret += " CSK>";
+            break;
+        case (uint32_t)KeyParametersPayload::KeyType::SPK:
+            ret += " SPK>";
+            break;
+        case (uint32_t)KeyParametersPayload::KeyType::MKFC:
+            ret += " MKFC>";
+            break;
+        case (uint32_t)KeyParametersPayload::KeyType::MSCCK:
+            ret += " MSCCK>";
+            break;
+        case (uint32_t)KeyParametersPayload::KeyType::MuSiK:
+            ret += " MuSiK>";
+            break;
+        default:
+            ret += " UNKNOWN("+itoa(purposeTag)+")>";
+    }
     ret += " #CS=<" + itoa(nCsValue);
-    ret += " CS ID map type=";
+    ret += "> CS ID map type=";
     if (csIdMapTypeValue == HDR_CS_ID_MAP_TYPE_SRTP_ID)
         ret += "<SRTP-ID>";
-    if (csIdMapTypeValue == HDR_CS_ID_MAP_TYPE_IPSEC4_ID)
+    else if (csIdMapTypeValue == HDR_CS_ID_MAP_TYPE_EMPTY)
+        ret += "<empty>";
+    else if (csIdMapTypeValue == HDR_CS_ID_MAP_TYPE_IPSEC4_ID)
         ret += "<IPSEC4-ID>";
+    else if (csIdMapTypeValue == HDR_CS_ID_MAP_TYPE_GENERIC_ID)
+        ret += "<GENERIC-ID>";
     else
         ret += "<unknown (" + itoa(csIdMapTypeValue) + ")>";
 
-    if (csIdMapPtr) {
-        ret += "\n\n";
+    if (csIdMapPtr && csIdMapPtr->length() > 0) {
         ret += csIdMapPtr->debugDump();
-        ret += "\n\n";
+        ret += "\n";
+    } else {
+        ret += "\nno CS ID Map Info";
     }
 
     return ret;

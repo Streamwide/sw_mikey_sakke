@@ -72,6 +72,10 @@ class LIBMIKEY_API MikeyPayload : public MObject {
         return "not_defined";
     }
 
+    uint8_t* start() const {
+        return startPtr;
+    }
+
   protected:
     bool rawPacketValid;
 

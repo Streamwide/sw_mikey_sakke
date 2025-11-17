@@ -17,8 +17,8 @@ uint8_t *doEncrypt(const int algo, const uint8_t* enc_key, const uint8_t* clear,
 uint8_t *doDecrypt(const int algo, const uint8_t* enc_key, const uint8_t* ciphered, const uint32_t ciphered_len, const uint8_t* ad, uint32_t* len_out);
 
 /*
--> Not declared to prevent wrong usage
-uint8_t *doEncrypt_with_iv(int algo, uint8_t* enc_key, uint8_t* clear, uint32_t clear_len, uint8_t* ad, uint8_t* iv, uint32_t* len_out);
+-> Not declared to prevent wrong usage (except for MCDataProtectedPayload)
+uint8_t *doEncryptCustom(const int algo, const uint8_t* enc_key, const uint8_t* clear, const uint32_t clear_len, const uint8_t* ad, const uint8_t ad_len, const uint8_t* iv, const uint8_t iv_len, uint32_t* len_out);
 */
 
 #if __cplusplus

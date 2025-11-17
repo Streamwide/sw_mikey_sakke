@@ -58,13 +58,19 @@ MikeyPayloadSP::MikeyPayloadSP(uint8_t* start, [[maybe_unused]] int lengthLimit)
     int      i                 = 5;
     uint16_t j                 = ((uint16_t)start[3] << 8 | (uint16_t)start[4]) + 5;
     // uint8_t *value;
+
+    if (j > lengthLimit) {
+        throw MikeyExceptionMessageContent("MikeyPayloadSP: policy_param_length seems too large");
+    }
     endPtr = startPtr + j;
     // while(i < lengthLimit) {
     while (i < j) {
         this->addMikeyPolicyParam(start[i], start[i + 1], &start[i + 2]);
         i = i + 2 + start[i + 1];
     }
-    assert(endPtr - startPtr == length());
+    if (endPtr - startPtr != length()) {
+        throw MikeyExceptionMessageContent("MikeyPayloadSP: finishing parsing out-of-boundary");
+    }
 }
 // Constructor when constructing new Mikey message, policy type entries added later with MikeyPayloadSP::addMikeyPolicyParam
 MikeyPayloadSP::MikeyPayloadSP(uint8_t policy_no, uint8_t prot_type) {
@@ -139,13 +145,115 @@ std::string MikeyPayloadSP::debugDump() {
     string ret = "MikeyPayloadSP: next_payload<" + itoa(nextPayloadTypeValue) + "> ";
 
     ret += string("policyNo: <") + itoa(policy_no) + "> ";
-    ret += string("protType: <") + itoa(prot_type) + ">\n";
+    ret += string("protType: <" + debugDumpProtType(prot_type) + "(") + itoa(prot_type) + ")>\n";
 
     auto i = param.begin();
     for (; i != param.end(); ++i) {
-        ret += string("type: <") + itoa((*i)->type) + "> ";
-        ret += string("value: <") + binToHex((*i)->value, (*i)->length) + ">\n";
+        ret += string("type: <" + debugDumpParamType((*i)->type) + "(") + itoa((*i)->type) + ")> ";
+        ret += string("value: <" + debugDumpParamValue((*i)->type, *(*i)->value) + "(") + itoa(*(*i)->value) + ")>\n";
     }
 
     return ret;
+}
+
+std::string MikeyPayloadSP::debugDumpProtType(uint8_t prot_type) {
+    switch (prot_type) {
+        case MIKEY_PROTO_SRTP:
+            return "MIKEY_PROTO_SRTP";
+        case MIKEY_PROTO_IPSEC4:
+            return "MIKEY_PROTO_IPSEC4";
+        default:
+            return "Unknown";
+    }
+}
+
+std::string MikeyPayloadSP::debugDumpParamType(uint8_t param_type) {
+    switch (param_type) {
+        case MIKEY_SRTP_EALG:
+            return "SRTP Enc Alg";
+        case MIKEY_SRTP_EKEYL:
+            return "SRTP Enc KeyLen";
+        case MIKEY_SRTP_AALG:
+            return "SRTP Authent Alg";
+        case MIKEY_SRTP_AKEYL:
+            return "SRTP Authent KeyLen";
+        case MIKEY_SRTP_SALTKEYL:
+            return "SRTP Salt KeyLen";
+        case MIKEY_SRTP_PRF:
+            return "SRTP PRF";
+        case MIKEY_SRTP_KEY_DERRATE:
+            return "SRTP Key DebRate";
+        case MIKEY_SRTP_ENCR_ON_OFF:
+            return "SRTP Enc Status";
+        case MIKEY_SRTCP_ENCR_ON_OFF:
+            return "SRTCP Enc Status";
+        case MIKEY_SRTP_FEC_ORDER:
+            return "SRTP FEC ORDER";
+        case MIKEY_SRTP_AUTH_ON_OFF:
+            return "SRTP Auth Status";
+        case MIKEY_SRTP_AUTH_TAGL:
+            return "SRTP Auth TagLen";
+        case MIKEY_SRTP_PREFIX:
+            return "SRTP PrefixLen";
+        case MIKEY_SRTP_ROC_TRANSMISSION_RATE:
+            return "SRTP ROC Transmission Rate";
+        case MIKEY_SRTP_ROC_AUTH_TAGL:
+            return "SRTP ROC Auth TagLen";
+        case MIKEY_SRTCP_AUTH_TAGL:
+            return "SRTCP Auth TagLen";
+        case MIKEY_SRTP_AEAD_TAGL:
+            return "SRTP AEAD TagLen";
+        default:
+            return "Unknown";
+    }
+}
+
+std::string MikeyPayloadSP::debugDumpParamValue(uint8_t param_type, uint8_t value) {
+    switch (param_type) {
+        case MIKEY_SRTP_EALG:
+            if (value == MIKEY_SRTP_EALG_NULL)
+                return "NULL";
+            else if (value == MIKEY_SRTP_EALG_AESCM)
+                return "AESCM";
+            else if (value == MIKEY_SRTP_EALG_AESF8)
+                return "AESF8";
+            else if (value == MIKEY_SRTP_EALG_AESGCM)
+                return "AESGCM";
+            break;
+        case MIKEY_SRTP_AALG:
+            if (value == MIKEY_SRTP_AALG_NULL)
+                return "NULL";
+            else if (value == MIKEY_SRTP_AALG_SHA1HMAC)
+                return "SHA1HMAC";
+            else if (value == MIKEY_SRTP_AALG_RCCM3)
+                return "RCCm3 (un-authent ROC)";
+            break;
+        case MIKEY_SRTP_EKEYL:
+        case MIKEY_SRTP_AKEYL:
+        case MIKEY_SRTP_SALTKEYL:
+        case MIKEY_SRTP_AUTH_TAGL:
+        case MIKEY_SRTP_PREFIX:
+            return "len";
+        case MIKEY_SRTP_PRF:
+            if (value == 0)
+                return "AES-CM";
+            break;
+        case MIKEY_SRTP_KEY_DERRATE:
+            break;
+        case MIKEY_SRTP_ENCR_ON_OFF:
+        case MIKEY_SRTCP_ENCR_ON_OFF:
+        case MIKEY_SRTP_AUTH_ON_OFF:
+            if (value == 0)
+                return "off";
+            else if (value == 1)
+                return "on";
+            break;
+        case MIKEY_SRTP_FEC_ORDER:
+            if (value == 0)
+                return "First FEC, then SRTP";
+            break;
+        default:
+            return "Unknown";
+    }
+    return "Unknown";
 }

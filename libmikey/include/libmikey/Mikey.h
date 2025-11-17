@@ -53,6 +53,9 @@ class LIBMIKEY_API IMikeyConfig : public virtual MObject {
     virtual bool isMethodEnabled(int kaType) const = 0;
 
     virtual bool isCertCheckEnabled() const = 0;
+
+    virtual void setPayloadSignatureValidation(bool verif) = 0;
+    virtual bool payloadSignatureValidation() const = 0;
 };
 
 class LIBMIKEY_API Mikey : public MObject {

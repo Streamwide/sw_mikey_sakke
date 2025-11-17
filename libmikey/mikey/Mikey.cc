@@ -81,7 +81,7 @@ bool Mikey::displayIMessageInfo(const string& message) {
                     throw MikeyExceptionAuthentication(msg.c_str());
                 }*/
                string dbgInfo = init_mes->debugDump();
-               printf("Debug info: %s", dbgInfo.c_str());
+               MIKEY_SAKKE_LOGI("Debug info: %s", dbgInfo.c_str());
 
                 ret = true;
             } catch (MikeyException& exc) {
@@ -151,7 +151,9 @@ bool Mikey::responderAuthenticate(const string& message, const string& peerUri, 
                 ka->setPeerUri(peerUri);
                 ka->setPeerId(peerId);
                 ka->setInitiatorData(init_mes);
-                init_mes->keyParameters();
+                // Works only if MCData Payload is not ciphered, else decryption
+                // is performed later within authenticate() method
+                init_mes->keyParameters(NULL);
 
                 if (init_mes->authenticate(*ka)) {
                     string msg = "Authentication of the MIKEY init message failed: " + ka->authError();
@@ -455,6 +457,7 @@ void Mikey::createKeyAgreement(int type) {
     }
 
     ka->setUri(config->getUri());
+    ka->setEccsiSignatureValidation(config->payloadSignatureValidation());
 
     if (isInitiator()) {
         addStreamsToKa();

@@ -2,13 +2,16 @@
 #include <libmutil/Logger.h>
 #include <test_data.h>
 #include <util/mcdata-crypto.h>
+#include <mikeysakke4c.h>
+#include <mscrypto/sakke.h>
 
 #include <openssl/bio.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
 
 /* Declared here, only for NIST test purposes */
-uint8_t *doEncryptWithIv(const int algo, const uint8_t* enc_key, const uint8_t* clear, const uint32_t clear_len, const uint8_t* ad, const uint8_t* iv, uint32_t* len_out);
+uint8_t *doEncryptCustom(const int algo, const uint8_t* enc_key, const uint8_t* clear, const uint32_t clear_len, const uint8_t* ad, const uint8_t ad_len, const uint8_t* iv, const uint8_t iv_len, uint32_t* len_out);
+uint8_t *doDecryptCustom(const int algo, const uint8_t* enc_key, const uint8_t* clear, const uint32_t clear_len, const uint8_t* ad, const uint8_t ad_len, const uint8_t iv_len, uint32_t* len_out);
 
 void stw_log(int log_level, const char* filename, unsigned line, const char* function, char* thread_name, long thread_id, const char* log) {
     fprintf(stderr, "[%s:%d][%s] %s\n", filename, line, function, log);
@@ -61,7 +64,7 @@ TEST(test_mcdata_crypto, test_crypto_nist_256) {
     uint8_t*    decrypted;
 
     /* Test ciphering the plaintext */
-    ciphered = doEncryptWithIv(MCDATA_AEAD_AES_256_GCM, nist_gcm_key, (uint8_t*)nist_gcm_pt, sizeof(nist_gcm_pt), nist_gcm_aad, nist_gcm_iv, (uint32_t*)&len_out);
+    ciphered = doEncryptCustom(MCDATA_AEAD_AES_256_GCM, nist_gcm_key, (uint8_t*)nist_gcm_pt, sizeof(nist_gcm_pt), nist_gcm_aad, DEFAULT_AEAD_AES_GCM_TAG_LENGTH, nist_gcm_iv, DEFAULT_AEAD_AES_GCM_IV_LENGTH, (uint32_t*)&len_out);
 
     /* Check the len of the output */
     ASSERT_EQ(len_out, sizeof(nist_gcm_pt)+DEFAULT_AEAD_AES_GCM_TAG_LENGTH+DEFAULT_AEAD_AES_GCM_IV_LENGTH);
@@ -71,6 +74,7 @@ TEST(test_mcdata_crypto, test_crypto_nist_256) {
     ASSERT_EQ(memcmp(ciphered+sizeof(nist_gcm_ct), nist_gcm_tag, sizeof(nist_gcm_tag)), 0);
     /* Check the iv value */
     ASSERT_EQ(memcmp(ciphered+sizeof(nist_gcm_ct)+DEFAULT_AEAD_AES_GCM_TAG_LENGTH, nist_gcm_iv, sizeof(nist_gcm_iv)), 0);
+    ASSERT_NE(len_out, 0);
 
     /* Test unciphering the cipher */
     decrypted = doDecrypt(MCDATA_AEAD_AES_256_GCM, nist_gcm_key, (uint8_t*)nist_gcm_ct_stw_payload, sizeof(nist_gcm_ct_stw_payload), nist_gcm_aad, (uint32_t*)&len_out);
@@ -79,6 +83,7 @@ TEST(test_mcdata_crypto, test_crypto_nist_256) {
     ASSERT_EQ(len_out, sizeof(nist_gcm_ct));
     /* Check the data ciphered value */
     ASSERT_EQ(memcmp(decrypted, nist_gcm_pt, sizeof(nist_gcm_pt)), 0);
+    ASSERT_NE(len_out, 0);
 
     free(ciphered);
     free(decrypted);
@@ -100,6 +105,7 @@ TEST(test_mcdata_crypto, test_crypto_nominal_aligned) {
 
     ASSERT_EQ(strlen(clear), len_decrypted);
     ASSERT_EQ(memcmp(clear, decrypted, len_decrypted), 0);
+    ASSERT_NE(len_decrypted, 0);
 
     free(ciphered);
     free(decrypted);
@@ -109,6 +115,7 @@ TEST(test_mcdata_crypto, test_crypto_nominal_aligned) {
 
     ASSERT_EQ(strlen(clear), len_decrypted);
     ASSERT_EQ(memcmp(clear, decrypted, len_decrypted), 0);
+    ASSERT_NE(len_decrypted, 0);
 
     free(ciphered);
     free(decrypted);
@@ -130,6 +137,7 @@ TEST(test_mcdata_crypto, test_crypto_nominal_unaligned) {
 
     ASSERT_EQ(strlen(clear), len_decrypted);
     ASSERT_EQ(memcmp(clear, decrypted, len_decrypted), 0);
+    ASSERT_NE(len_decrypted, 0);
 
     free(ciphered);
     free(decrypted);
@@ -139,6 +147,7 @@ TEST(test_mcdata_crypto, test_crypto_nominal_unaligned) {
 
     ASSERT_EQ(strlen(clear), len_decrypted);
     ASSERT_EQ(memcmp(clear, decrypted, len_decrypted), 0);
+    ASSERT_NE(len_decrypted, 0);
 
     free(ciphered);
     free(decrypted);
@@ -174,6 +183,7 @@ TEST(test_mcdata_crypto, test_crypto_nominal_long) {
 
     ASSERT_EQ(strlen(clear), len_decrypted);
     ASSERT_EQ(memcmp(clear, decrypted, len_decrypted), 0);
+    ASSERT_NE(len_decrypted, 0);
 
     free(ciphered);
     free(decrypted);
@@ -183,6 +193,50 @@ TEST(test_mcdata_crypto, test_crypto_nominal_long) {
 
     ASSERT_EQ(strlen(clear), len_decrypted);
     ASSERT_EQ(memcmp(clear, decrypted, len_decrypted), 0);
+    ASSERT_NE(len_decrypted, 0);
+
+    free(ciphered);
+    free(decrypted);
+}
+
+TEST(test_mcdata_crypto, test_crypto_nominal_unaligned_custom_iv_len) {
+    mikey_sakke_set_log_func(stw_log);
+    MIKEY_SAKKE_LOG_SET_LEVEL("debug");
+    int         len_ciphered;
+    int         len_decrypted;
+    char        clear[] = "toto12345-libMikeySakke";
+    uint8_t*    ciphered;
+    uint8_t*    decrypted;
+    uint8_t     enc_key[] = {0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16};
+    uint8_t     enc_key256[] = {0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16};
+    uint8_t     ad[] = {0x16, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x01, 0x16, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x01};
+    uint8_t     iv[] = {0x2, 0x1, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x10, 0x09, 0x11, 0x12, 0x13, 0x15, 0x14, 0x16};
+
+    uint8_t ad_len = 32;
+    uint8_t iv_len = 16;
+
+
+    ciphered = doEncryptCustom(MCDATA_AEAD_AES_128_GCM, enc_key, (uint8_t*)clear, strlen(clear), ad, ad_len, iv, iv_len, (uint32_t*)&len_ciphered);
+    ASSERT_NE(ciphered, nullptr);
+    ASSERT_NE(len_ciphered, 0);
+    ASSERT_EQ(len_ciphered, strlen(clear)+DEFAULT_AEAD_AES_GCM_TAG_LENGTH+iv_len);
+    decrypted = doDecryptCustom(MCDATA_AEAD_AES_128_GCM, enc_key, ciphered, len_ciphered, ad, ad_len, iv_len, (uint32_t*)&len_decrypted);
+
+    ASSERT_EQ(memcmp(clear, decrypted, strlen(clear)), 0);
+    ASSERT_NE(len_decrypted, 0);
+    ASSERT_EQ(strlen(clear), len_decrypted);
+
+    free(ciphered);
+    free(decrypted);
+
+    ciphered = doEncryptCustom(MCDATA_AEAD_AES_256_GCM, enc_key256, (uint8_t*)clear, strlen(clear), ad, ad_len, iv, iv_len, (uint32_t*)&len_ciphered);
+    ASSERT_NE(ciphered, nullptr);
+    ASSERT_NE(len_ciphered, 0);
+    decrypted = doDecryptCustom(MCDATA_AEAD_AES_256_GCM, enc_key256, ciphered, len_ciphered, ad, ad_len, iv_len, (uint32_t*)&len_decrypted);
+
+    ASSERT_EQ(memcmp(clear, decrypted, strlen(clear)), 0);
+    ASSERT_NE(len_decrypted, 0);
+    ASSERT_EQ(strlen(clear), len_decrypted);
 
     free(ciphered);
     free(decrypted);

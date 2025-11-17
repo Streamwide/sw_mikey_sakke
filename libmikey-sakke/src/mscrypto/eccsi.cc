@@ -302,6 +302,21 @@ bool Verify(uint8_t const* msg, size_t msg_len, uint8_t const* sign, size_t sign
         HE.digest(msg, msg_len);
         HE.complete();
 
+        /*
+        // uncomment to debug ECCSI signature
+        MIKEY_SAKKE_LOGD("[ECCSI-Verify] G\t: %s", E->base_point_octets().translate().c_str());
+        MIKEY_SAKKE_LOGD("[ECCSI-Verify] KPAK\t: %s", KPAK.translate().c_str());
+        MIKEY_SAKKE_LOGD("[ECCSI-Verify] ID\t: %s", identifier.translate().c_str());
+        OctetString PVT_os = OctetString {PVT_len, PVT_begin};
+        MIKEY_SAKKE_LOGD("[ECCSI-Verify] PVT\t: %s", PVT_os.translate().c_str());
+        MIKEY_SAKKE_LOGD("[ECCSI-Verify] HS\t: %s", HS.str().translate().c_str());
+        OctetString r_os = OctetString {r_len, r_begin};
+        MIKEY_SAKKE_LOGD("[ECCSI-Verify] r\t: %s", r_os.translate().c_str());
+        OctetString msg_os = OctetString {msg_len, msg};
+        MIKEY_SAKKE_LOGD("[ECCSI-Verify] M\t: %s", msg_os.translate().c_str());
+        MIKEY_SAKKE_LOGD("[ECCSI-Verify] HE: %s", HE.str().translate().c_str());
+        */
+
         // [4-5]: Use OpenSSL EC_POINTs_mul to combine steps [4] and
         //        [5] after pre-multiplication of scalars.
         //

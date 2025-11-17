@@ -109,6 +109,8 @@ const char* MikeyPayloadID::RoleTypeToString(int e) {
         case MIKEYPAYLOAD_ID_ROLE_APPLICATION:      return "application";
         case MIKEYPAYLOAD_ID_ROLE_INITIATOR_KMS:    return "initiator_kms";
         case MIKEYPAYLOAD_ID_ROLE_RESPONDER_KMS:    return "responder_kms";
+        case MIKEYPAYLOAD_ID_ROLE_UID_INITIATOR:    return "initiator_uid";
+        case MIKEYPAYLOAD_ID_ROLE_UID_RESPONDER:    return "responder_uid";
         default:                                    return "unknown";
     }
 }

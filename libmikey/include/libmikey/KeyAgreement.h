@@ -167,6 +167,9 @@ class LIBMIKEY_API KeyAgreement : public MObject, public virtual ITgk, public vi
     void     setKfcId(uint32_t kfcId) override;
     void     setKfcId(OctetString kfcId) override;
 
+    bool eccsiSignatureValidation() const;
+    void setEccsiSignatureValidation(const bool verif);
+
     /* KeyValidity information, exchanged during the key
      * agreement. NULL by default */
     MRef<KeyValidity*> keyValidity();
@@ -271,6 +274,7 @@ class LIBMIKEY_API KeyAgreement : public MObject, public virtual ITgk, public vi
     std::string uriValue;
     std::string peerUriValue;
     OctetString peerIdValue;
+    bool        eccsiSignatureValidationValue;
 };
 
 // If we don't include MikeyMessage, then any user

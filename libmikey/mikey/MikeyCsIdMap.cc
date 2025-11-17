@@ -39,6 +39,18 @@ MikeyCsIdMapSrtp::MikeyCsIdMapSrtp(): cs(vector<MikeySrtpCs*>()) {}
 // added 041201 JOOR
 MikeyCsIdMapIPSEC4::MikeyCsIdMapIPSEC4(): cs(list<MikeyIPSEC4Cs*>()) {}
 
+MikeyCsIdMapGenericId::MikeyCsIdMapGenericId(uint8_t csId, uint8_t protType, bool sessionDataFlag, uint8_t securityPoliciesNumber, uint8_t securityPolicy, uint8_t spiLen, uint8_t* spi)
+    : csId(csId), protType(protType), sessionDataFlag(sessionDataFlag), securityPoliciesNumber(securityPoliciesNumber), securityPolicy(securityPolicy), spiLen(spiLen)  {
+        if (securityPoliciesNumber > 1) {
+            throw MikeyException("MikeyCsIdMapGenericId: Invalid securityPoliciesNumber should be 1");
+        }
+        if (spiLen > GENERIC_ID_SPI_MAX) {
+            throw MikeyException("MikeyCsIdMapGenericId: spiLen too long, not supported");
+        }
+        memcpy(this->spi, spi, spiLen);
+        totalLen = 3 /* csID + protType + sessionDataFlag + securityPoliciesNumber */ + securityPoliciesNumber + 2 /* Size of field len of session_data (always 0 for now )*/ + 1 /* Size if spiLen field */+ spiLen;
+};
+
 MikeyCsIdMapSrtp::MikeyCsIdMapSrtp(uint8_t* data, int length) {
     if (length % 9) {
         throw MikeyException("Invalid length of SRTP_ID map info");
@@ -74,6 +86,43 @@ MikeyCsIdMapIPSEC4::MikeyCsIdMapIPSEC4(uint8_t* data, int length) {
     }
 }
 
+MikeyCsIdMapGenericId::MikeyCsIdMapGenericId(uint8_t* data, int lengthLimit) {
+    /* See  RFC-6043 $6.1.1 */
+    uint32_t n = 0;
+
+    if (lengthLimit < 3) {
+        throw MikeyException("Invalid length of GENERIC_ID map info");
+    }
+
+    csId                    = data[n++];
+    protType                = data[n++];
+    sessionDataFlag         = data[n] & 0x80;
+    securityPoliciesNumber  = data[n++] & 0x7F; // Each following SecurityPolicy is 1B long
+    if (securityPoliciesNumber > 0) { // Handle at least 1 policy for now (as stated in TS 33.180)
+        securityPolicy = data[n];
+    }
+    n += securityPoliciesNumber;
+    if ((uint32_t)lengthLimit < n) {
+        throw MikeyException("Invalid securityPoliciesNumber regarding lengthLimit");
+    }
+    sessionDataLen          = data[n] << 8 | data[n+1];
+    n += 2;
+    n += sessionDataLen; // Ignore the SessionData for now
+    if ((uint32_t)lengthLimit < n) {
+        throw MikeyException("Invalid sessionDataLen regarding lengthLimit");
+    }
+    spiLen                  = data[n++];
+    if ((uint32_t)lengthLimit < (n+spiLen) || spiLen > 32) {
+        throw MikeyException("spiLen is out of bond or unsupported length");
+    }
+    memcpy(spi, data + n, spiLen);
+    n += spiLen;
+    if ((uint32_t)lengthLimit < n) {
+        throw MikeyException("Invalid spiLen regarding lengthLimit");
+    }
+    totalLen = n;
+}
+
 MikeyCsIdMapSrtp::~MikeyCsIdMapSrtp() {
     vector<MikeySrtpCs*>::iterator i;
 
@@ -94,6 +143,10 @@ int MikeyCsIdMapSrtp::length() const {
 // added 041201 JOOR
 int MikeyCsIdMapIPSEC4::length() const {
     return 13 * (int)cs.size();
+}
+
+int MikeyCsIdMapGenericId::length() const {
+    return (int)totalLen;
 }
 
 void MikeyCsIdMapSrtp::writeData(uint8_t* start, int expectedLength) {
@@ -137,6 +190,41 @@ void MikeyCsIdMapIPSEC4::writeData(uint8_t* start, int expectedLength) {
         }
         j++;
     }
+}
+
+void MikeyCsIdMapGenericId::writeData(uint8_t* start, int expectedLength) {
+    if (expectedLength < length()) {
+        throw MikeyExceptionMessageLengthException("CsIdMapGenericId is too long");
+    }
+
+    uint32_t n  = 0;
+    start[n++]  = csId;
+    start[n++]  = protType;
+    start[n]    = (sessionDataFlag == true ? 0x80 : 0x0);
+    start[n++]  |= securityPoliciesNumber;
+    if (securityPoliciesNumber > 0) {
+        start[n++] = securityPolicy; // At the moment, handle only 1 PolicyNumber as stated in TS-33.180 $E.2.2-1
+    }
+    start[n++] = 0; // No SessionDataLen as SSRC are not provided here (see TS-33.180 $E.2.2-1)
+    start[n++] = 0; // No SessionDataLen as SSRC are not provided here (see TS-33.180 $E.2.2-1)
+    start[n++] = spiLen;
+    memcpy(start + n, spi, spiLen); // SPI is the MKI (PCK-ID or GUK-ID or CSK-ID), so the csbid
+    n += spiLen;
+    if (n != (uint32_t)length()) {
+        throw MikeyException("MikeyCsIdMapGenericId wrote unexpected len");
+    }
+}
+
+uint8_t MikeyCsIdMapSrtp::getNumberCs() {
+    return (uint8_t)cs.size();
+}
+
+uint8_t MikeyCsIdMapIPSEC4::getNumberCs() {
+    return (uint8_t)cs.size();
+}
+
+uint8_t MikeyCsIdMapGenericId::getNumberCs() {
+    return securityPoliciesNumber;
 }
 
 uint8_t MikeyCsIdMapSrtp::findCsId(uint32_t ssrc) {
@@ -259,32 +347,44 @@ void MikeyCsIdMapIPSEC4::addSA(uint32_t spi, uint32_t spiSrcaddr, uint32_t spiDs
 }
 
 std::string MikeyCsIdMapSrtp::debugDump() {
-    std::string                         output = "";
+    std::string                         output = "MapSrtp:\n";
     std::vector<MikeySrtpCs*>::iterator iCs;
     uint8_t                             csId = 1;
 
     for (iCs = cs.begin(); iCs != cs.end(); ++iCs, ++csId) {
-        output += "csId: <" + itoa(csId) + ">\n";
-        output += "   policyNo: <" + itoa((*iCs)->policyNo) + ">\n";
-        output += "   SSRC: <" + itoa((*iCs)->ssrc) + ">\n";
-        output += "   ROC: <" + itoa((*iCs)->roc) + ">\n";
-        output += "\n";
+        output += "\tcsId: <" + itoa(csId) + ">\n";
+        output += "\t\tpolicyNo: <" + itoa((*iCs)->policyNo) + ">\n";
+        output += "\t\tSSRC: <" + itoa((*iCs)->ssrc) + ">\n";
+        output += "\t\tROC: <" + itoa((*iCs)->roc) + ">\n";
     }
     return output;
 }
 
 std::string MikeyCsIdMapIPSEC4::debugDump() {
-    std::string                         output = "";
+    std::string                         output = "MapIpsec4\n";
     std::list<MikeyIPSEC4Cs*>::iterator iCs;
     uint8_t                             csId = 1;
 
     for (iCs = cs.begin(); iCs != cs.end(); ++iCs, ++csId) {
-        output += "csId: <" + itoa(csId) + ">\n";
-        output += "   spi: <" + itoa((*iCs)->spi) + ">\n";
-        output += "   policyNo: <" + itoa((*iCs)->policyNo) + ">\n";
-        output += "   Source Addr.: <" + itoa((*iCs)->spiSrcaddr) + ">\n";
-        output += "   Dest. Addr.: <" + itoa((*iCs)->spiDstaddr) + ">\n";
-        output += "\n";
+        output += "\tcsId: <" + itoa(csId) + ">\n";
+        output += "\t\tspi: <" + itoa((*iCs)->spi) + ">\n";
+        output += "\t\tpolicyNo: <" + itoa((*iCs)->policyNo) + ">\n";
+        output += "\t\tSource Addr.: <" + itoa((*iCs)->spiSrcaddr) + ">\n";
+        output += "\t\tDest. Addr.: <" + itoa((*iCs)->spiDstaddr) + ">\n";
     }
+    return output;
+}
+
+std::string MikeyCsIdMapGenericId::debugDump() {
+    std::string                         output = "MapGENERIC-ID\n";
+    std::list<MikeyIPSEC4Cs*>::iterator iCs;
+    uint8_t                             csId = 1;
+
+    output += "\tcsId: <" + itoa(csId) + ">\n";
+    output += "\t\tprotType: <" + itoa(protType) + ">\n";
+    output += "\t\tsessionDataFlag: <" + (sessionDataFlag == true ? std::string("true") : std::string("false")) + ">\n";
+    output += "\t\tsecurityPoliciesNumber: <" + itoa(securityPoliciesNumber) + ">\n";
+    OctetString tmp = OctetString{spiLen, spi};
+    output += "\t\tspi(len=" + itoa(spiLen) + "): <" + tmp.translate().c_str() + ">\n";
     return output;
 }

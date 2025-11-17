@@ -95,7 +95,13 @@ if(NOT TARGET xmlsec1-openssl OR NOT TARGET xmlsec1)
 endif()
 endif()
 
-if(NOT OPENSSL_ONLY AND (NOT TARGET gmp OR NOT TARGET gmpxx))
+if(USE_SYSTEM_GMP)
+
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GMP REQUIRED IMPORTED_TARGET gmp)
+    set(gmp PkgConfig::GMP)
+
+elseif(NOT OPENSSL_ONLY AND (NOT TARGET gmp OR NOT TARGET gmpxx))
     set (DIRLIBGMP ./lib/gmp)
 
     if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/third_party/gmp-${GMP_VERSION}.tar.gz)

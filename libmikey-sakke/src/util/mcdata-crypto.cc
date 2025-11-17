@@ -6,18 +6,19 @@
 #include <libmcrypto/rand.h>
 #include <cstring>
 
+using libmutil::binToHex;
 
-/* WARNING: this has been tested only on OpenSSL 3.0.7 */
+/* WARNING: this has been tested only on OpenSSL 3.0.7 & 3.0.13 */
 
 /**
  * AD: associated data must but 16 Bytes long
  * IV: Initialization vector must but 12 Bytes long
  * Returns the ciphered payload formatted as a concatenation "CIPHER_DATA(len=clear_len)|TAG(16B)|IV(12B)"
  */
-uint8_t* doEncrypt_AEAD_AES_GCM(const int key_length, const uint8_t* enc_key, const uint8_t* clear, const uint32_t clear_len, const uint8_t* ad, const uint8_t* iv, uint32_t* len_out) {
+uint8_t* doEncrypt_AEAD_AES_GCM(const int key_length, const uint8_t* enc_key, const uint8_t* clear, const uint32_t clear_len, const uint8_t* ad, const uint8_t ad_len, const uint8_t* iv, const uint8_t iv_len, uint32_t* len_out) {
     int     tmp_len;
     int     tmp;
-    uint8_t* ciphered = (uint8_t*)malloc(clear_len * sizeof(*clear)+DEFAULT_AEAD_AES_GCM_TAG_LENGTH+DEFAULT_AEAD_AES_GCM_IV_LENGTH);
+    uint8_t* ciphered = (uint8_t*)malloc(clear_len * sizeof(*clear)+DEFAULT_AEAD_AES_GCM_TAG_LENGTH+iv_len);
 
     // 1. Get a crypto context
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
@@ -30,7 +31,7 @@ uint8_t* doEncrypt_AEAD_AES_GCM(const int key_length, const uint8_t* enc_key, co
     }
 
     // 3. Explicitly declare the IV length. NIST does reccommand to have a 96bit (12B) long IV
-    tmp = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, DEFAULT_AEAD_AES_GCM_IV_LENGTH, NULL);
+    tmp = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, iv_len, NULL);
     if (!tmp) {
         ERR_print_errors_fp(stderr);
         fprintf(stderr, "EVP_CIPHER_CTX_ctrl (iv_len): %s (%lu)\n",
@@ -49,10 +50,10 @@ uint8_t* doEncrypt_AEAD_AES_GCM(const int key_length, const uint8_t* enc_key, co
 
     // 5. Cipher the "associated data" to perform later the authentication
     if (ad != NULL) {
-        tmp = EVP_EncryptUpdate(ctx, NULL, &tmp_len, ad, DEFAULT_AEAD_AES_GCM_TAG_LENGTH);
+        tmp = EVP_EncryptUpdate(ctx, NULL, &tmp_len, ad, ad_len);
         if (!tmp) {
             ERR_print_errors_fp(stderr);
-            fprintf(stderr, "EVP_DecryptUpdate (tag): %s (%lu)\n",
+            fprintf(stderr, "EVP_EncryptUpdate (tag): %s (%lu)\n",
 			ERR_reason_error_string(ERR_get_error()), ERR_get_error());
         }
     }
@@ -86,8 +87,8 @@ uint8_t* doEncrypt_AEAD_AES_GCM(const int key_length, const uint8_t* enc_key, co
     *len_out += DEFAULT_AEAD_AES_GCM_TAG_LENGTH;
 
     // 9. Copy the IV value at the end of the ciphered payload, for an easy re-use in UnCrypt function
-    memcpy(ciphered+*len_out, iv, DEFAULT_AEAD_AES_GCM_IV_LENGTH);
-    *len_out += DEFAULT_AEAD_AES_GCM_IV_LENGTH;
+    memcpy(ciphered+*len_out, iv, iv_len);
+    *len_out += iv_len;
 
     // DEBUG purpose
     //printf("Ciphered STW payload:\n");
@@ -98,12 +99,12 @@ uint8_t* doEncrypt_AEAD_AES_GCM(const int key_length, const uint8_t* enc_key, co
     return ciphered;
 }
 
-uint8_t* doDecrypt_AEAD_AES_GCM(const int key_length, const uint8_t* enc_key, const uint8_t* ciphered, const uint32_t ciphered_len, const uint8_t* ad, uint32_t* len_out) {
+uint8_t* doDecrypt_AEAD_AES_GCM(const int key_length, const uint8_t* enc_key, const uint8_t* ciphered, const uint32_t ciphered_len, const uint8_t* ad, const uint8_t ad_len, const uint8_t iv_len, uint32_t* len_out) {
     int         tmp_len;
     int         tmp;
-    const uint8_t*    iv = ciphered+ciphered_len-DEFAULT_AEAD_AES_GCM_IV_LENGTH;
+    const uint8_t*    iv = ciphered+ciphered_len-iv_len;
 
-    uint8_t* clear = (uint8_t*)malloc(ciphered_len * sizeof(*clear)-DEFAULT_AEAD_AES_GCM_TAG_LENGTH-DEFAULT_AEAD_AES_GCM_IV_LENGTH);
+    uint8_t* clear = (uint8_t*)malloc(ciphered_len * sizeof(*clear)-DEFAULT_AEAD_AES_GCM_TAG_LENGTH-iv_len);
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (key_length == 16) {
@@ -111,7 +112,7 @@ uint8_t* doDecrypt_AEAD_AES_GCM(const int key_length, const uint8_t* enc_key, co
     } else if (key_length == 32) {
         tmp = EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
     }
-    tmp = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, 12, NULL);
+    tmp = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, iv_len, NULL);
     if (!tmp) {
         ERR_print_errors_fp(stderr);
         fprintf(stderr, "EVP_CIPHER_CTX_ctrl (iv_len): %s (%lu)\n",
@@ -126,7 +127,7 @@ uint8_t* doDecrypt_AEAD_AES_GCM(const int key_length, const uint8_t* enc_key, co
 #if 0
 	/* Set expected tag value. A restriction in OpenSSL 1.0.1c and earlier
          * required the tag before any AAD or ciphertext */
-	tmp = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, ciphered+ciphered_len-DEFAULT_AEAD_AES_GCM_IV_LENGTH-DEFAULT_AEAD_AES_GCM_TAG_LENGTH);
+	tmp = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, DEFAULT_AEAD_AES_GCM_TAG_LENGTH, ciphered+ciphered_len-iv_len-DEFAULT_AEAD_AES_GCM_TAG_LENGTH);
 #endif
     //tmp = EVP_CIPHER_CTX_set_padding(ctx, 0);
     if (!tmp) {
@@ -136,14 +137,14 @@ uint8_t* doDecrypt_AEAD_AES_GCM(const int key_length, const uint8_t* enc_key, co
     }
 
     if (ad != NULL) {
-        tmp = EVP_DecryptUpdate(ctx, NULL, &tmp_len, ad, DEFAULT_AEAD_AES_GCM_TAG_LENGTH);
+        tmp = EVP_DecryptUpdate(ctx, NULL, &tmp_len, ad, ad_len);
         if (!tmp) {
             ERR_print_errors_fp(stderr);
             fprintf(stderr, "EVP_DecryptUpdate (tag): %s (%lu)\n",
 			ERR_reason_error_string(ERR_get_error()), ERR_get_error());
         }
     }
-    tmp = EVP_DecryptUpdate(ctx, clear, (int*)len_out, ciphered, ciphered_len-DEFAULT_AEAD_AES_GCM_TAG_LENGTH-DEFAULT_AEAD_AES_GCM_IV_LENGTH);
+    tmp = EVP_DecryptUpdate(ctx, clear, (int*)len_out, ciphered, ciphered_len-DEFAULT_AEAD_AES_GCM_TAG_LENGTH-iv_len);
     if (!tmp) {
         fprintf(stderr, "EVP_DecryptUpdate: %s (%lu)\n",
 			ERR_reason_error_string(ERR_get_error()), ERR_get_error());
@@ -179,15 +180,15 @@ uint8_t* doDecrypt_AEAD_AES_GCM(const int key_length, const uint8_t* enc_key, co
  * WARNING: if you call this function directly, make sure to have a couple key/iv unique for each ciphered text
  *          else, it weakness the crypto security
  */
-uint8_t *doEncryptWithIv(const int algo, const uint8_t* enc_key, const uint8_t* clear, const uint32_t clear_len, const uint8_t* ad, const uint8_t* iv, uint32_t* len_out) {
+uint8_t *doEncryptCustom(const int algo, const uint8_t* enc_key, const uint8_t* clear, const uint32_t clear_len, const uint8_t* ad, const uint8_t ad_len, const uint8_t* iv, const uint8_t iv_len, uint32_t* len_out) {
     uint8_t*    ret = NULL;
 
     if (enc_key == NULL || clear == NULL) {
         MIKEY_SAKKE_LOGE("Crypto: Wrong argument (enc_key or clear text is NULL pointed)");
     } else if (algo == MCDATA_AEAD_AES_128_GCM) {
-        ret = doEncrypt_AEAD_AES_GCM(16, enc_key, clear, clear_len, ad, iv, len_out);
+        ret = doEncrypt_AEAD_AES_GCM(16, enc_key, clear, clear_len, ad, ad_len, iv, iv_len, len_out);
     } else if (algo == MCDATA_AEAD_AES_256_GCM) {
-        ret = doEncrypt_AEAD_AES_GCM(32, enc_key, clear, clear_len, ad, iv, len_out);
+        ret = doEncrypt_AEAD_AES_GCM(32, enc_key, clear, clear_len, ad, ad_len, iv, iv_len, len_out);
     } else {
         MIKEY_SAKKE_LOGE("Crypto: Ciphering algo (%d) is not supported", algo);
     }
@@ -202,23 +203,27 @@ uint8_t *doEncrypt(const int algo, const uint8_t* enc_key, const uint8_t* clear,
 
     /* As the couple key/iv MUST always be unique, then it is better to randomize IV at each call */
     Rand::randomize(iv, DEFAULT_AEAD_AES_GCM_IV_LENGTH);
-    return doEncryptWithIv(algo, enc_key, clear, clear_len, ad, iv, len_out);
+    return doEncryptCustom(algo, enc_key, clear, clear_len, ad, DEFAULT_AEAD_AES_GCM_TAG_LENGTH, iv, DEFAULT_AEAD_AES_GCM_IV_LENGTH, len_out);
 }
 
 /**
  * ad (additional data) MUST be 16 bytes long (or null, but in this case, no authentication is possible)
  */
-uint8_t *doDecrypt(const int algo, const uint8_t* enc_key, const uint8_t* ciphered, const uint32_t ciphered_len, const uint8_t* ad, uint32_t* len_out) {
+uint8_t *doDecryptCustom(const int algo, const uint8_t* enc_key, const uint8_t* ciphered, const uint32_t ciphered_len, const uint8_t* ad, const uint8_t ad_len, const uint8_t iv_len, uint32_t* len_out) {
     uint8_t*    ret = NULL;
 
     if (enc_key == NULL || ciphered == NULL) {
         MIKEY_SAKKE_LOGE("Crypto: Wrong argument (enc_key or clear text is NULL pointed)");
     } else if (algo == MCDATA_AEAD_AES_128_GCM) {
-        ret = doDecrypt_AEAD_AES_GCM(16, enc_key, ciphered, ciphered_len, ad, len_out);
+        ret = doDecrypt_AEAD_AES_GCM(16, enc_key, ciphered, ciphered_len, ad, ad_len, iv_len, len_out);
     } else if (algo == MCDATA_AEAD_AES_256_GCM) {
-        ret = doDecrypt_AEAD_AES_GCM(32, enc_key, ciphered, ciphered_len, ad, len_out);
+        ret = doDecrypt_AEAD_AES_GCM(32, enc_key, ciphered, ciphered_len, ad, ad_len, iv_len, len_out);
     } else {
         MIKEY_SAKKE_LOGE("Crypto: Ciphering algo (%d) is not supported", algo);
     }
     return ret;
+}
+
+uint8_t *doDecrypt(const int algo, const uint8_t* enc_key, const uint8_t* ciphered, const uint32_t ciphered_len, const uint8_t* ad, uint32_t* len_out) {
+    return doDecryptCustom(algo, enc_key, ciphered, ciphered_len, ad, DEFAULT_AEAD_AES_GCM_TAG_LENGTH, DEFAULT_AEAD_AES_GCM_IV_LENGTH, len_out);
 }

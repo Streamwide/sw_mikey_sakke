@@ -134,8 +134,22 @@ void MikeyPayloadT::writeData(uint8_t* start, int expectedLength) {
 }
 
 string MikeyPayloadT::debugDump() {
-    return "MikeyPayloadT: next_payload=<" + itoa(nextPayloadType()) + "> tsValue type=<" + itoa(tsTypeValue) + "> tsValue_value=<"
-           + std::to_string(tsValue) + ">";
+    string ret = "MikeyPayloadT: next_payload=<" + itoa(nextPayloadType()) + "> tsValue type=<";
+    switch (tsTypeValue) {
+        case T_TYPE_NTP_UTC:
+            ret += "NTP-UTC";
+            break;
+        case T_TYPE_NTP:
+            ret += "NTP";
+            break;
+        case T_TYPE_COUNTER:
+            ret += "COUNTER";
+            break;
+        default:
+            ret += "UNKNOWN("+itoa(tsTypeValue)+")";
+    }
+    ret += "> tsValue_value=<" + std::to_string(tsValue) + ">";
+    return ret;
 }
 
 int64_t MikeyPayloadT::offset([[maybe_unused]] int type, uint64_t tsValue) {

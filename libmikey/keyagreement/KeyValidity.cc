@@ -22,7 +22,6 @@
  */
 
 #include <cassert>
-#include <config.h>
 #include <cstring>
 #include <libmikey/KeyValidity.h>
 #include <libmikey/MikeyDefs.h>

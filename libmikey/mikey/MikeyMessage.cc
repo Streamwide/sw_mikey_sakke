@@ -45,6 +45,7 @@
 
 #include <libmcrypto/aes.h>
 #include <libmcrypto/base64.h>
+#include <libmutil/Logger.h>
 
 #include <cstring>
 #include <map>
@@ -60,7 +61,7 @@ using libmutil::itoa;
 
 MikeyPayloads::MikeyPayloads(): compiled(false), rawData(nullptr) {}
 
-MikeyPayloads::MikeyPayloads(int firstPayloadType, uint8_t* message, int lengthLimit): compiled(true), rawData(message) {
+MikeyPayloads::MikeyPayloads(int firstPayloadType, uint8_t* message, int lengthLimit): compiled(true), rawData(message), rawLen(lengthLimit) {
     parse(firstPayloadType, message, lengthLimit, payloads);
 }
 
@@ -125,7 +126,7 @@ MikeyMessage* MikeyMessage::parse(uint8_t* message, int lengthLimit) {
             throw MikeyExceptionUnimplemented("Unimplemented type of message in INVITE");
     }
 
-    msg->setRawMessageData(message);
+    msg->setRawMessageData(message, (uint32_t)lengthLimit);
     msg->payloads = payloads;
 
     return msg;
@@ -142,7 +143,13 @@ MikeyMessage* MikeyMessage::parse(const string& b64Message) {
         throw MikeyExceptionMessageContent("Invalid B64 input message");
     }
 
-    return parse(messageData, messageLength);
+    try {
+        return parse(messageData, messageLength);
+    } catch (MikeyException& e) {
+        delete[] messageData;
+        throw e;
+    }
+    return nullptr;
 }
 
 MikeyMessage::~MikeyMessage() = default;
@@ -231,7 +238,9 @@ void MikeyPayloads::parse(int firstPayloadType, uint8_t* message, int lengthLimi
 
     int nextPayloadType = hdr->nextPayloadType();
 
+    MIKEY_SAKKE_LOGV("[%d][pos:%p][size:%d/limit:%d]", firstPayloadType, message, msgpos-message, lengthLimit);
     while (!(msgpos >= message + lengthLimit) && nextPayloadType != MikeyPayload::LastPayload) {
+        MIKEY_SAKKE_LOGV("[%d][pos:%p][size:%d/limit:%d]", firstPayloadType, message, msgpos-message, lengthLimit);
 
         MRef<MikeyPayload*> payload = parsePayload(nextPayloadType, msgpos, limit);
 
@@ -283,7 +292,7 @@ vector<uint8_t> MikeyPayloads::buildSignData(size_t sigLength, bool useIdsT) {
 
     uint8_t* start = rawMessageData();
     uint8_t* end   = start;
-    int     diff  = rawMessageLength() - (int)sigLength;
+    int     diff  = rawMessageLengthAsOutput() - (int)sigLength;
     assert(diff >= 0);
     end += diff;
 
@@ -317,7 +326,7 @@ void MikeyPayloads::compile() {
     if (rawData)
         delete[] rawData;
 
-    rawData = new uint8_t[rawMessageLength()];
+    rawData = new uint8_t[rawMessageLengthAsOutput()];
 
     list<MRef<MikeyPayload*>>::iterator i;
     uint8_t*                             pos = rawData;
@@ -335,22 +344,33 @@ uint8_t* MikeyPayloads::rawMessageData() {
     return rawData;
 }
 
-int MikeyPayloads::rawMessageLength() const {
-    int length = 0;
+// This method returns the bytes length necessary to handle a write of the I-MESSAGE in case of export
+// It tooks only the total length of all payloads
+// Before 1.1.14 && 2.0.2, signature was based on a wrong len
+uint32_t MikeyPayloads::rawMessageLengthAsOutput() const {
+    uint32_t length = 0;
     for (const auto & payload : payloads) {
         length += payload->length();
     }
-
     return length;
 }
 
-void MikeyPayloads::setRawMessageData(uint8_t* data) {
+uint32_t MikeyPayloads::rawMessageLength() const {
+    if (rawMessageLengthAsOutput() != rawLen) {
+        MIKEY_SAKKE_LOGE("MikeyMessage: total payload parsed does not correspond to message len (rawLen=%d -> lenCalulated=%d) -> may indicate miss in parsing", rawLen, rawMessageLengthAsOutput());
+    }
+
+    return rawLen;
+}
+
+void MikeyPayloads::setRawMessageData(uint8_t* data, uint32_t len) {
     if (rawData) {
         delete[] rawData;
         rawData = nullptr;
     }
 
     rawData  = data;
+    rawLen   = len;
     compiled = true;
 }
 
@@ -359,9 +379,9 @@ string MikeyPayloads::debugDump() {
     list<MRef<MikeyPayload*>>::iterator i;
 
     for (i = payloads.begin(); i != payloads.end(); ++i) {
-        ret = ret + "\n\n["+payloadTypeToString((*i)->payloadType())+":(" + itoa((*i)->payloadType()) + ")]" + (*i)->debugDump();
+        ret = ret + "\nStart<"+itoa((uint64_t)((*i)->start()))+"> Len<"+itoa((*i)->length())+">\n["+payloadTypeToString((*i)->payloadType())+":(" + itoa((*i)->payloadType()) + ")]" + (*i)->debugDump();
     }
-    ret += "\n== BEGIN MikeyPayloads ==\n";
+    ret += "\n== END MikeyPayloads ==\n";
 
     return ret;
 }
@@ -383,7 +403,7 @@ list<MRef<MikeyPayload*>>::iterator MikeyPayloads::lastPayload() {
 }
 
 string MikeyPayloads::b64Message() {
-    return base64_encode(rawMessageData(), rawMessageLength());
+    return base64_encode(rawMessageData(), rawMessageLengthAsOutput());
 }
 
 uint32_t MikeyMessage::csbId() {
@@ -507,7 +527,7 @@ int32_t MikeyMessage::keyAgreementType() const {
     throw MikeyExceptionUnimplemented("Unimplemented type of MIKEY message");
 }
 
-std::shared_ptr<KeyParametersPayload> MikeyMessage::keyParameters() const {
+std::shared_ptr<KeyParametersPayload> MikeyMessage::keyParameters([[maybe_unused]] uint8_t* key) const {
     throw MikeyExceptionUnimplemented("Unimplemented type of MIKEY message");
 }
 

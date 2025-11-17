@@ -100,7 +100,8 @@ class LIBMIKEY_API MikeyPayloads : public MObject {
 
     std::string debugDump();
     uint8_t*    rawMessageData();
-    int         rawMessageLength() const;
+    uint32_t    rawMessageLength() const;
+    uint32_t    rawMessageLengthAsOutput() const;
 
     std::list<MRef<MikeyPayload*>>::const_iterator firstPayload() const;
     std::list<MRef<MikeyPayload*>>::const_iterator lastPayload() const;
@@ -126,7 +127,7 @@ class LIBMIKEY_API MikeyPayloads : public MObject {
      * It's owned by this object,
      * and will be deleted in destructor.
      */
-    void setRawMessageData(uint8_t* data);
+    void setRawMessageData(uint8_t* data, uint32_t len);
 
     bool verifyMac(KeyAgreementPSK* ka, int macAlg, const uint8_t* receivedMac, const uint8_t* macInput, unsigned int macInputLength) const;
 
@@ -140,6 +141,7 @@ class LIBMIKEY_API MikeyPayloads : public MObject {
     void     compile();
     bool     compiled;
     uint8_t* rawData;
+    uint32_t rawLen;
 };
 
 /**
@@ -184,7 +186,7 @@ class LIBMIKEY_API MikeyMessage : public MikeyPayloads {
     virtual bool                                  isInitiatorMessage() const;
     virtual bool                                  isResponderMessage() const;
     virtual int32_t                               keyAgreementType() const;
-    virtual std::shared_ptr<KeyParametersPayload> keyParameters() const;
+    virtual std::shared_ptr<KeyParametersPayload> keyParameters(uint8_t* key) const;
 
   private:
 };

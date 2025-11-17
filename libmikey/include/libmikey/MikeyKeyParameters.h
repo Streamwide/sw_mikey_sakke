@@ -10,7 +10,7 @@ class KeyParametersPayload {
   public:
     // 3GPP TS 33.180 §E.6.11
     enum class KeyType {
-        UNDEFINED = 0,
+        UNDEFINED = -1,
         GMK,
         PCK,
         CSK,
@@ -55,6 +55,8 @@ class KeyParametersPayload {
     // For formats, see TS24.379 §Annex I
     KeyType           keyType;        // TS 33.180§E.6.11, format V
     uint32_t          keyStatus;      //§E.6.9, format V
+    bool              keyStatusRevok;
+    bool              keyStatusGateway;
     uint64_t          activationTime; //§E.6.4, format V
     uint64_t          expiryTime;     //§E.6.10, format V
     std::string       text;           //§E.6.5, format LV-E

@@ -25,7 +25,7 @@
 #ifndef MIKEYPAYLOADGENERALEXTENSIONS_H
 #define MIKEYPAYLOADGENERALEXTENSIONS_H
 
-#include <libmikey/MikeyKeyParameters.h>
+#include <libmikey/MikeyMcDataProtected.h>
 #include <libmikey/MikeyPayload.h>
 #include <libmikey/libmikey_config.h>
 #include <memory>
@@ -34,6 +34,7 @@ static constexpr int MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE = 21;
 
 static constexpr int MIKEY_EXT_TYPE_VENDOR_ID = 0; // Vendor specific byte string
 static constexpr int MIKEY_EXT_TYPE_SDP_ID    = 1; // List of SDP key mgmt IDs (allocated for use in [KMASDP])
+static constexpr int MIKEY_EXT_TYPE_3GPP      = 7; // 3GPP Key Params for SAKKE payload (TS-33.180 E-6.1)
 
 class LIBMIKEY_API MikeyPayloadGeneralExtensions : public MikeyPayload {
   public:
@@ -47,11 +48,11 @@ class LIBMIKEY_API MikeyPayloadGeneralExtensions : public MikeyPayload {
     void writeData(uint8_t* start, int expectedLength) override;
     // Return the length of the GeneralExtension in bytes
     int                           length() const override;
+    std::string                   debugDump() override;
     uint8_t                               type;
-    uint16_t                              leng;
+    uint16_t                              data_len;
     uint8_t*                              data = nullptr;
-    std::shared_ptr<KeyParametersPayload> keyParams;
-
+    std::shared_ptr<MikeyMcDataProtected> mcDataProtected;
   private:
 };
 

@@ -57,7 +57,7 @@ std::string CanonicalizeUri(std::string const& uri) {
             return "tel:" + std::string(span_begin, span_end);
         curi = span_end;
     }
-    assert(!!!"Should not get here.");
+    throw MikeyException("CanonicalizeUri: Should not get here.");
     return uri;
 }
 
@@ -245,10 +245,29 @@ class MikeyPayloadSAKKE : public MikeyPayload {
     int                   key_type;
 
     std::string debugDump() override {
-        std::string ret;
-
-        ret = "SakkeType:" + itoa(key_type) + " ParamsValue:" + itoa(iana_sakke_params_value) + " GUK-ID(" + std::string(GUK_ID.translate().c_str()) + ")\n";
-        ret += "SED: \n" + std::string(SED.translate().c_str());
+        std::string ret = "MikeyPayloadSAKKE: next_payload=<" + itoa(nextPayloadType()) + "> ParamsValue=<";
+        switch (iana_sakke_params_value) {
+            case 1:
+                ret += "Parameter Set 1";
+                break;
+            default:
+                ret += "UNKNOWN("+itoa(iana_sakke_params_value)+")";
+        }
+        ret += "> ID-Scheme=<";
+        switch (id_scheme) {
+            case TelURIWithMonthlyKeys:
+                ret += "TelURIWithMonthlyKeys";
+                break;
+            case MikeySakkeUid:
+                ret += "MikeySakkeUid";
+                break;
+            case PrivateEndPointAddressWithMonthlyKeys:
+                ret += "PrivateEndPointAddressWithMonthlyKeys";
+                break;
+            default:
+                ret += "UNKNOWN("+itoa(id_scheme)+")";
+        }
+        ret += "> (keyType="+ (key_type==Undefined ? "UNDEFINED" : itoa(key_type)) + ") SED: \n" + std::string(SED.translate().c_str());
 
         return ret;
     }
@@ -286,14 +305,16 @@ class MikeyPayloadSAKKE : public MikeyPayload {
 
         endPtr = payload + SED_len;
 
-        MIKEY_SAKKE_LOGI("Read Sakke payload with SED = %s", SED.translate().c_str());
+        MIKEY_SAKKE_LOGD("Read Sakke payload with SED = %s", SED.translate().c_str());
     }
 
     int length() const override {
         return 5 + SED.size();
     }
     void writeData(uint8_t* data, int len) override {
-        assert(len == length());
+        if (len != length()) {
+            throw MikeyException("MikeyPayloadSAKKE: write unexpected length of bytes");
+        }
         std::memset(data, 0, len);
 
         size_t SED_len = SED.size();
@@ -323,8 +344,6 @@ class MikeyMessageSAKKE : public MikeyMessage {
 
         auto*             tPayload = new MikeyPayloadT();
         MikeyPayloadRAND* randPayload;
-
-        OctetString::Translation const raw = OctetString::Untranslated;
 
         std::vector<std::string> const& communities = keyStore->GetCommunityIdentifiers();
 
@@ -366,17 +385,28 @@ class MikeyMessageSAKKE : public MikeyMessage {
         MIKEY_SAKKE_LOGD("Peer ID : %s", peerId.translate().c_str());
 
         uint32_t csbId = 0;
+        OctetString mki;
+        libmutil::MRef<MikeyCsIdMap*> csIdMap;
         if (params && params->key_type == GMK) {
             OctetString gmk {params->key_len, params->key};
             OctetString gmkId {params->key_id_len, params->key_id};
             auto        gukId = GenerateGukId(OctetString(ka->peerUri(), OctetString::Untranslated), gmk, gmkId);
             if (gukId.empty()) {
-                MIKEY_SAKKE_LOGE("Error : could not generate GUK ID");
+                MIKEY_SAKKE_LOGE("Error : could not generate GUK-ID");
             } else {
                 csbId = gukId[0] << 24 | gukId[1] << 16 | gukId[2] << 8 | gukId[3];
                 ka->setCsbId(csbId);
                 MIKEY_SAKKE_LOGI("Setting CsbID = GUK-ID = %u", csbId);
             }
+
+            // GMK TS-33.180 $E.2.2 & $E.1.2
+            // -> CS-ID=(4 | 5), CS#=1 or 2, ProtType=0, GENERIC-ID #P=1, SessionData=0, SPI=MKI=CsbId
+            ka->setCsIdMapType(HDR_CS_ID_MAP_TYPE_GENERIC_ID);
+            mki = gmkId;
+            mki.concat(gukId);
+            uint8_t policyNumberInSP = 0;
+            csIdMap = new MikeyCsIdMapGenericId(CS_ID_MCPTT_GROUP_CALL, MIKEY_PROTO_SRTP, false, 1, policyNumberInSP, mki.size(), mki.raw());
+            ka->setCsIdMap(csIdMap);
         } else if (params && (params->key_type == CSK || params->key_type == PCK)) {
             csbId |= params->key_id[0] << 24;
             csbId |= (params->key_id[1] << 16) & 0xFF0000;
@@ -384,12 +414,28 @@ class MikeyMessageSAKKE : public MikeyMessage {
             csbId |= (params->key_id[3]) & 0xFF;
             ka->setCsbId(csbId);
             MIKEY_SAKKE_LOGD("Set csbId as 0x%08X", ka->csbId());
+            if (params->key_type == CSK) {
+                // CSK TS-33.180 $E.4.3 & $E.1.2
+                // -> CS-ID=(6 | 8), CS#=1 or 2, ProtType=0, GENERIC-ID #P=1, SessionData=(0 or len for SSRCs not supported yet), SPI=MKI=CsbId
+                ka->setCsIdMapType(HDR_CS_ID_MAP_TYPE_GENERIC_ID);
+                uint8_t policyNumberInSP = 0;
+                csIdMap = new MikeyCsIdMapGenericId(CS_ID_CSK_SRTCP_FOR_MCPTT, MIKEY_PROTO_SRTP, false, 1, policyNumberInSP, params->key_id_len, params->key_id);
+                ka->setCsIdMap(csIdMap);
+            } else {
+                // For PCK: TS-33.180 $E.3.1 & $E.1.2
+                // -> CS-ID=0, CS#=0 (no Crypto-Sessions), CS-ID map type=1, CS ID Map Info=0 length
+                ka->setCsIdMapType(HDR_CS_ID_MAP_TYPE_EMPTY);
+                ka->setCsIdMap(nullptr);
+            }
         } else {
             csbId = ka->csbId();
             if (!csbId) {
                 Rand::randomize(&csbId, sizeof(csbId));
             }
+            ka->setCsIdMapType(HDR_CS_ID_MAP_TYPE_EMPTY);
+            ka->setCsIdMap(nullptr);
         }
+        ka->setnCs(ka->csIdMap().isNull() ? 0 : ka->csIdMap()->getNumberCs());
 
         // adding header payload v=0 (TS.33-180  E-1.2)
         addPayload(
@@ -411,12 +457,6 @@ class MikeyMessageSAKKE : public MikeyMessage {
 
         // TODO: support anonymous sender via config
         static constexpr bool anonymousSender = false;
-
-        OctetString senderKmsId(senderCommunity, raw);
-        senderKmsId.concat(0);
-
-        OctetString peerKmsId(peerCommunity, raw);
-        peerKmsId.concat(0);
 
         // for now, include all identifiers
         if (!anonymousSender) {
@@ -442,28 +482,28 @@ class MikeyMessageSAKKE : public MikeyMessage {
         if (params) {
             OctetString key {params->key_len, params->key};
             addPayload(new MikeyPayloadSAKKE(ka, sakkeParams, peerId, peerCommunity, keyStore, params->key_type, key));
+            KeyParametersPayload::KeyType kt = KeyParametersPayload::KeyType::GMK;
+
             if (params->key_type == GMK) {
-                auto     keyParam = KeyParametersPayload(KeyParametersPayload::KeyType::GMK, KeyParametersPayload::NOT_REVOKED, 0, 0, "");
-                uint8_t* keyParamPayload = keyParam.bytes();
-                addPayload(new MikeyPayloadGeneralExtensions(MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE_KEY_PARAMETERS, keyParam.length(),
-                                                             keyParamPayload));
-                delete[] keyParamPayload;
+                kt = KeyParametersPayload::KeyType::GMK;
             } else if (params->key_type == CSK) {
                 // TODO-RBY: Why the CSK does have a special General Extensions ? Does the TS plan that ?
-                auto     keyParam = KeyParametersPayload(KeyParametersPayload::KeyType::CSK, KeyParametersPayload::NOT_REVOKED, 0, 0, "");
-                uint8_t* keyParamPayload = keyParam.bytes();
-                addPayload(new MikeyPayloadGeneralExtensions(MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE_KEY_PARAMETERS, keyParam.length(),
-                                                             keyParamPayload));
-                delete[] keyParamPayload;
+                kt = KeyParametersPayload::KeyType::CSK;
             } else if (params->key_type == PCK) {
                 // TODO-RBY: added for debug purpose (parsing of I_MESSAGE fail on key_size retrieval if not present), but TS does not say
                 // we need it
-                auto     keyParam = KeyParametersPayload(KeyParametersPayload::KeyType::PCK, KeyParametersPayload::NOT_REVOKED, 0, 0, "");
-                uint8_t* keyParamPayload = keyParam.bytes();
-                addPayload(new MikeyPayloadGeneralExtensions(MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE_KEY_PARAMETERS, keyParam.length(),
-                                                             keyParamPayload));
-                delete[] keyParamPayload;
+                kt = KeyParametersPayload::KeyType::PCK;
             }
+
+            // Generate the full PayloadGeneralExtensions as 3GPP stands for it: GeneralExtension( MCDataPayload (Encrypted[KeyParams]) )
+            auto     keyParam = KeyParametersPayload(kt, KeyParametersPayload::NOT_REVOKED, 0, 0, "");
+            uint8_t* keyParamPayload = keyParam.bytes();
+            auto     mcData = MikeyMcDataProtected(keyParamPayload, keyParam.length(), key.raw(), csbId);
+            uint8_t* mcDataPayload = mcData.bytes();
+            addPayload(new MikeyPayloadGeneralExtensions(MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE_KEY_PARAMETERS, mcData.length(),
+                                                            mcDataPayload));
+            delete[] keyParamPayload;
+            delete[] mcDataPayload;
         } else {
             throw MikeyException("Invalid Key agreement params");
         }
@@ -477,7 +517,10 @@ class MikeyMessageSAKKE : public MikeyMessage {
 
             bool sign_ok = false;
             try {
-                sign_ok = Sign(rawMessageData(), rawMessageLength() - sig_len, sign->sigData(), sign->sigLength(), senderId,
+                // See RFC-3830 $5.2 Paragraph 3 -> Signature does cover all payload including SIGN minus the signature itself
+                // Alea & Softil in their current version does not respect this standard. To sign without SIGN, include:
+                // sign_ok = Sign(rawMessageData(), rawMessageLengthAsOutput() - sign->sigLength(), sign->sigData(), sign->sigLength(), senderId,
+                sign_ok = Sign(rawMessageData(), rawMessageLengthAsOutput() - sig_len, sign->sigData(), sign->sigLength(), senderId,
                                (bool (*)(void*, size_t))Rand::randomize, keyStore);
             } catch (std::exception& e) {
                 MIKEY_SAKKE_LOGE("Sign error : %s", e.what());
@@ -560,7 +603,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
         ka->setnCs(hdr->nCs());
         ka->setCsbId(hdr->csbId());
 
-        if (hdr->csIdMapType() == HDR_CS_ID_MAP_TYPE_SRTP_ID) {
+        if (hdr->csIdMapType() == HDR_CS_ID_MAP_TYPE_SRTP_ID || hdr->csIdMapType() == HDR_CS_ID_MAP_TYPE_GENERIC_ID) {
             ka->setCsIdMap(hdr->csIdMap());
             ka->setCsIdMapType(hdr->csIdMapType());
         }
@@ -591,10 +634,17 @@ class MikeyMessageSAKKE : public MikeyMessage {
         bool verify_ok = false;
 
         try {
+            // In respect of RFC 3380 Sectin 5.2, remove only the signature field, not the full SIGN payload
             verify_ok = Verify(rawMessageData(), rawMessageLength() - sign->sigLength(), sign->sigData(), sign->sigLength(), senderId,
-                               senderCommunity, keys);
+                            senderCommunity, keys);
+            if (!verify_ok) {
+                // Some implementation (Alea / Softil) sign without the full SIGN payload, let's try again this compat mode
+                MIKEY_SAKKE_LOGE("ECCSI signature failed, trying the compatibility mode for third-party implementation...");
+                verify_ok = Verify(rawMessageData(), rawMessageLength() - sign->length(), sign->sigData(), sign->sigLength(), senderId,
+                    senderCommunity, keys);
+            }
         } catch (std::exception& e) {
-            MIKEY_SAKKE_LOGE("Verify error: %s", e.what());
+            MIKEY_SAKKE_LOGE("ECCSI Verify error: %s", e.what());
         }
 
         if (verify_ok) {
@@ -602,7 +652,11 @@ class MikeyMessageSAKKE : public MikeyMessage {
         } else {
             MIKEY_SAKKE_LOGE("ECCSI signing VERIFICATION FAILED");
             ka->setAuthError("MIKEY-SAKKE message signature verification failed.");
-            return true;
+            if (kaBase->eccsiSignatureValidation()) {
+                return true;
+            } else {
+                MIKEY_SAKKE_LOGE("[WARNING DANGEROUS] ECCSI signature verification disabled, continuing...");
+            }
         }
 
         sign = nullptr;
@@ -617,7 +671,7 @@ class MikeyMessageSAKKE : public MikeyMessage {
 
         OctetString                   SSV;
         OctetString                   KID;
-        KeyParametersPayload::KeyType type = KeyParametersPayload::KeyType::UNDEFINED;
+        KeyParametersPayload::KeyType type = KeyParametersPayload::KeyType::GMK;
         try {
             // Use the RAND previously parsed as it must be the same length as SSV output
             SSV = ExtractSharedSecret(sakke->SED, responderId, responderCommunity, keys, ka->randLength());
@@ -633,29 +687,53 @@ class MikeyMessageSAKKE : public MikeyMessage {
                 ka->setAuthError("Failed to extract TGK from SAKKE payload.");
                 return true;
             }
-            MRef<MikeyPayload*>            ext        = extractPayload(MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE);
-            MikeyPayloadGeneralExtensions* extensions = ext.isNull() ? nullptr : dynamic_cast<MikeyPayloadGeneralExtensions*>(*ext);
 
-            if (extensions) {
-                type = extensions->keyParams->keyType;
-                if (type == KeyParametersPayload::KeyType::GMK) {
-                    std::vector<uint8_t> gukId;
-                    gukId.reserve(4);
-                    gukId.push_back(csbId() >> 24);
-                    gukId.push_back((csbId() & 0xFF0000) >> 16);
-                    gukId.push_back((csbId() & 0xFF00) >> 8);
-                    gukId.push_back(csbId() & 0xFF);
-                    OctetString sID(ka->peerUri(), OctetString::Untranslated);
-                    OctetString pID(ka->uri(), OctetString::Untranslated);
-                    KID = ExtractGmkId(gukId, pID, SSV);
-                    MIKEY_SAKKE_LOGI("Extracted GMK-ID = %s", KID.translate().c_str());
-                    ka->setTgkId(KID);
-                } else if (type == KeyParametersPayload::KeyType::CSK) {
-                    [[maybe_unused]] uint32_t kfc_id = csbId();
-                    ka->setKfcId(csbId());
-                } else if (type == KeyParametersPayload::KeyType::PCK) {
-                    ka->setTgkId(csbId());
+
+            if (hdr->csbId() && (SSV.size() != 16 && SSV.size() != 32)) {
+                MIKEY_SAKKE_LOGE("ERROR: csbID cannot be 0 && SSV size MUST be 16/32B long");
+                ka->setAuthError("Failed derivate SSV into DPCK to get keyParameters");
+                return true;
+            }
+            uint8_t csbIdData[4];
+            csbIdData[0] = (hdr->csbId() & 0xFF000000) >> 24;
+            csbIdData[1] = (hdr->csbId() & 0xFF0000) >> 16;
+            csbIdData[2] = (hdr->csbId() & 0xFF00) >> 8;
+            csbIdData[3] = (hdr->csbId() & 0xFF);
+
+            OctetString dppkIdOs {4, csbIdData};
+            OctetString dppkOs {SSV.size(), SSV.raw()};
+            std::vector<uint8_t> dpck = MikeySakkeCrypto::DerivateDppkToDpck(dppkIdOs, dppkOs);
+            std::shared_ptr<KeyParametersPayload> param = keyParameters(dpck.data());
+
+            if (param != nullptr) {
+                type = param->keyType;
+            } else {
+                MIKEY_SAKKE_LOGD("No extension, KeyType extracted: 0x%x", ((csbId()>>24) & 0xF0) >> 4);
+                // Key Properties' payload is optional by TS 33.180 E.4.1 for CSK, then let's determine it through the Key-ID
+                if (((csbId()>>24) & 0xF0) >> 4 == CSK) {
+                    type = KeyParametersPayload::KeyType::CSK;
                 }
+                if (((csbId()>>24) & 0xF0) >> 4 == PCK) {
+                    type = KeyParametersPayload::KeyType::PCK;
+                }
+            }
+            if (type == KeyParametersPayload::KeyType::GMK) {
+                std::vector<uint8_t> gukId;
+                gukId.reserve(4);
+                gukId.push_back(csbId() >> 24);
+                gukId.push_back((csbId() & 0xFF0000) >> 16);
+                gukId.push_back((csbId() & 0xFF00) >> 8);
+                gukId.push_back(csbId() & 0xFF);
+                OctetString sID(ka->peerUri(), OctetString::Untranslated);
+                OctetString pID(ka->uri(), OctetString::Untranslated);
+                KID = ExtractGmkId(gukId, pID, SSV);
+                MIKEY_SAKKE_LOGI("Extracted GMK-ID = %s", KID.translate().c_str());
+                ka->setTgkId(KID);
+            } else if (type == KeyParametersPayload::KeyType::CSK) {
+                [[maybe_unused]] uint32_t kfc_id = csbId();
+                ka->setKfcId(csbId());
+            } else if (type == KeyParametersPayload::KeyType::PCK) {
+                ka->setTgkId(csbId());
             }
 
         } catch (std::exception& e) {
@@ -722,20 +800,32 @@ class MikeyMessageSAKKE : public MikeyMessage {
         return KEY_AGREEMENT_TYPE_SAKKE;
     }
 
-    std::shared_ptr<KeyParametersPayload> keyParameters() const override {
+    std::shared_ptr<KeyParametersPayload> keyParameters(uint8_t* key) const override {
         auto payload = extractPayload(MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE);
         if (payload == nullptr) {
+            MIKEY_SAKKE_LOGI("MikeyMessageSAKKE::keyParameters: No GeneralExtension payload, going default");
             return nullptr;
         }
 
         auto extensionPayload = dynamic_cast<const MikeyPayloadGeneralExtensions*>(*payload);
         if (extensionPayload == nullptr) {
+            MIKEY_SAKKE_LOGE("MikeyMessageSAKKE::keyParameters: Impossible cast of GeneralExtension payload, going default");
             return nullptr;
         }
-        if (extensionPayload->type == MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE_KEY_PARAMETERS) {
-            return extensionPayload->keyParams;
+        if (extensionPayload->type != MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE_KEY_PARAMETERS) {
+            MIKEY_SAKKE_LOGE("MikeyMessageSAKKE::keyParameters: PayloadType is not 3GPP KeyParam, going default");
+            return nullptr;
         }
-        return nullptr;
+        if (extensionPayload->mcDataProtected == nullptr) {
+            MIKEY_SAKKE_LOGI("MikeyMessageSAKKE::keyParameters: MCDataProtectectedPayload is null, going default");
+            return nullptr;
+        }
+        if (key == NULL && extensionPayload->mcDataProtected->isPayloadEncrypted()) {
+            MIKEY_SAKKE_LOGI("MikeyMessageSAKKE::keyParameters: KeyParam payload is encrypted, retry once SAKKE is unciphered");
+            return nullptr;
+        }
+
+        return extensionPayload->mcDataProtected->getKeyParams(key);
     }
 };
 

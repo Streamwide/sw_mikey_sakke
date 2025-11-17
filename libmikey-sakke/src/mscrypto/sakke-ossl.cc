@@ -712,7 +712,7 @@ OctetString ExtractGmkId(OctetString gukId, OctetString peerUri, OctetString con
 std::vector<uint8_t> GenericKdf(const uint8_t FC, OctetString const& P0, OctetString const& key) {
     // Use KDF specified in annex B of 3GPP TS 33.220
     // With the following imposed parameters (3GPP TS33.179 §F.1.3)
-    //  FC = 0xaa for DPPK, 0x50 for GukID-salt
+    //  FC = 0x53 for DPPK, 0x50 for GukID-salt
     //  P0 = refer to TS (depend of the type of output)
     //  L0 = length of above
 
@@ -757,8 +757,8 @@ std::vector<uint8_t> DerivateDppkToDpck(OctetString const& dppkId, OctetString c
     // Info (See §8.3): For 1to1 MCData, DPPK (MCData Payload Protection Key) is the PCK (Private Call Key)
     // Info (See §8.4): For Groups MCData, DPPK is the GMK (Group Master Key)
     // Use KDF specified in annex B of 3GPP TS 33.220
-    // With the following imposed parameters (3GPP TS33.179 §F.1.3)
-    //  FC = 0xaa.
+    // With the following imposed parameters (3GPP TS33.179 §F.1.3) <-- Where does it comes from ?
+    //  FC = 0x53   -> 3GPP TS33.180 §F.1.5
     //  P0 = DPPK-ID
     //  L0 = length of above
 
@@ -768,7 +768,7 @@ std::vector<uint8_t> DerivateDppkToDpck(OctetString const& dppkId, OctetString c
         return std::vector<uint8_t> {};
     }
 
-    return GenericKdf(0xaa, dppkId, DPPK);
+    return GenericKdf(0x53, dppkId, DPPK);
 }
 
 } // namespace MikeySakkeCrypto

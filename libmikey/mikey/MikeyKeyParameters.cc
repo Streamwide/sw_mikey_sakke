@@ -1,5 +1,11 @@
 #include <libmikey/MikeyKeyParameters.h>
+#include <libmutil/stringutils.h>
+#include <util/octet-string.h>
+#include <libmutil/Logger.h>
 #include <sstream>
+#include <cstring>
+
+using libmutil::itoa;
 
 KeyParametersPayload::KeyParametersPayload(KeyType type, KeyStatus status, uint64_t aTime, uint64_t eTime, std::string txt)
     : keyType(type), keyStatus(status), activationTime(aTime), expiryTime(eTime), text(txt) {
@@ -12,17 +18,30 @@ KeyParametersPayload::KeyParametersPayload(KeyType type, KeyStatus status, uint6
     }
 
     /// Compute length of payload
-    // TS 33.180 §E.6.1
-    static constexpr uint16_t minimum_size = 1 + 1 + 4 + 5 + 5 + 2 + 2;
+    // TS 33.180 §E.6.1 ->
+    //      1B: KeyType
+    //      4B: Status
+    //      5B: ActivationTime
+    //      5B: ExpiryTime
+    //      2B: TextLen + XB of text
+    //      (2B): McGroupsIDsLen + XB of GroupsIds <- Only Present in case of GMK/MKFC/MuSiK
+    //      XB: Reserved for key info
+    static constexpr uint16_t minimum_size = 1 + 4 + 5 + 5 + 2;
     // Add text field length
     size = minimum_size + text.length();
-    // Compute MCGroupIDs length
+    // Compute MCGroupIDs length (at the end, len will always be >=1, at least for the "numberOfGroupIDs" field)
     MCGroupIDslen = 0;
-    MCGroupIDslen += sizeof(mcGroupIDsPayload.numberOfGroupIDs);
 
-    if (mcGroupIDsPayload.numberOfGroupIDs) {
-        MCGroupIDslen += 1 + 2 + mcGroupIDsPayload.groupID.length; // Size of IEI + length size + length value
+    if (keyType == KeyType::GMK || keyType == KeyType::MKFC || keyType == KeyType::MuSiK) {
+        size += 2; // McGroupsIDsLen (TS 33.180 §E.6.1)
+        MCGroupIDslen = 1; // Add 1B for the mandatory "Number of Group IDs" TS 33.180 §E.6.3
+        if (mcGroupIDsPayload.numberOfGroupIDs) { // Handle only 1 group for now
+            MCGroupIDslen += 1 + 2 + mcGroupIDsPayload.groupID.length; // Size of IEI + length size + length value
+        }
     }
+
+    keyStatusRevok = keyStatus & KeyStatus::NOT_REVOKED;
+    keyStatusGateway = keyStatus & KeyStatus::SHARED_WITH_GATEWAY;
 
     size += MCGroupIDslen;
 }
@@ -40,23 +59,36 @@ KeyParametersPayload::KeyParametersPayload(uint8_t* start_of_payload, uint16_t l
                  | (uint64_t)payload[14];
     uint16_t txt_len = (uint16_t)payload[15] << 8 | (uint16_t)payload[16];
     uint16_t i;
-    for (i = 0; i <= txt_len; ++i) {
-        text.push_back(payload[16 + i]);
+    for (i = 17; i-17 < txt_len; ++i) {
+        text.push_back(payload[i]);
     }
-    i             = i + 16;
-    MCGroupIDslen = (uint16_t)payload[i] << 8 | (uint16_t)payload[i + 1];
-    i += 2;
-    if (MCGroupIDslen == 1) {
-        mcGroupIDsPayload.numberOfGroupIDs = 0;
-    } else {
-        mcGroupIDsPayload.numberOfGroupIDs = 1;
-        mcGroupIDsPayload.groupID.iei      = payload[i++];
-        mcGroupIDsPayload.groupID.length   = (uint16_t)payload[i] << 8 | (uint16_t)payload[i + 1];
+
+    if (keyType == KeyType::GMK || keyType == KeyType::MKFC || keyType == KeyType::MuSiK) {
+        MCGroupIDslen = (uint16_t)payload[i] << 8 | (uint16_t)payload[i + 1];
         i += 2;
-        mcGroupIDsPayload.groupID.data = new uint8_t[mcGroupIDsPayload.groupID.length]();
-        for (uint16_t j = 0; j < mcGroupIDsPayload.groupID.length; ++j) {
-            mcGroupIDsPayload.groupID.data[j] = payload[i++];
+        if (MCGroupIDslen > 1) {
+            mcGroupIDsPayload.numberOfGroupIDs = payload[i++];
+
+            if (mcGroupIDsPayload.numberOfGroupIDs != 0 && MCGroupIDslen > 3) {
+                mcGroupIDsPayload.groupID.iei      = payload[i++];
+                mcGroupIDsPayload.groupID.length   = (uint16_t)payload[i] << 8 | (uint16_t)payload[i + 1];
+                i += 2;
+                if (mcGroupIDsPayload.groupID.length > (MCGroupIDslen - 4)) {
+                    MIKEY_SAKKE_LOGE("KeyParametersPayload: OutOfBond groupID len[%d] vs MCGroupIDslen[%d]", mcGroupIDsPayload.groupID.length, MCGroupIDslen);
+                } else {
+                    mcGroupIDsPayload.groupID.data = new uint8_t[mcGroupIDsPayload.groupID.length]();
+                    for (uint16_t j = 0; j < mcGroupIDsPayload.groupID.length; ++j) {
+                        mcGroupIDsPayload.groupID.data[j] = payload[i++];
+                    }
+                }
+            }
         }
+    }
+    keyStatusRevok = keyStatus & KeyStatus::NOT_REVOKED;
+    keyStatusGateway = keyStatus & KeyStatus::SHARED_WITH_GATEWAY;
+
+    if (size != i) {
+        MIKEY_SAKKE_LOGE("CAUTION: KeyParametersPayload may not have been fully parsed as length does not match (%dB in input but %dB read)", size, i);
     }
 }
 
@@ -64,57 +96,91 @@ uint8_t* KeyParametersPayload::bytes() const {
     uint8_t* payload = nullptr;
 
     payload     = new uint8_t[size]();
-    payload[0]  = MIKEYPAYLOAD_GENERALEXTENSIONS_PAYLOAD_TYPE_KEY_PARAMETERS;
-    payload[1]  = (size & 0xFF00) >> 8;
-    payload[2]  = size & 0xFF;
-    payload[3]  = static_cast<uint8_t>(keyType);
-    payload[4]  = (keyStatus & 0xFF000000) >> 24;
-    payload[5]  = (keyStatus & 0xFF0000) >> 16;
-    payload[6]  = (keyStatus & 0xFF00) >> 8;
-    payload[7]  = (keyStatus & 0xFF);
-    payload[8]  = (activationTime & 0xFF00000000) >> 32;
-    payload[9]  = (activationTime & 0xFF000000) >> 24;
-    payload[10] = (activationTime & 0xFF0000) >> 16;
-    payload[11] = (activationTime & 0xFF00) >> 8;
-    payload[12] = (activationTime & 0xFF);
-    payload[13] = (expiryTime & 0xFF00000000) >> 32;
-    payload[14] = (expiryTime & 0xFF000000) >> 24;
-    payload[15] = (expiryTime & 0xFF0000) >> 16;
-    payload[16] = (expiryTime & 0xFF00) >> 8;
-    payload[17] = (expiryTime & 0xFF);
-    payload[18] = (text.length() & 0xFF00) >> 8;
-    payload[19] = (text.length() & 0xFF);
     uint16_t n  = 0;
+    payload[n++]  = static_cast<uint8_t>(keyType);
+    payload[n++]  = (keyStatus & 0xFF000000) >> 24;
+    payload[n++]  = (keyStatus & 0xFF0000) >> 16;
+    payload[n++]  = (keyStatus & 0xFF00) >> 8;
+    payload[n++]  = (keyStatus & 0xFF);
+    payload[n++]  = (activationTime & 0xFF00000000) >> 32;
+    payload[n++]  = (activationTime & 0xFF000000) >> 24;
+    payload[n++] = (activationTime & 0xFF0000) >> 16;
+    payload[n++] = (activationTime & 0xFF00) >> 8;
+    payload[n++] = (activationTime & 0xFF);
+    payload[n++] = (expiryTime & 0xFF00000000) >> 32;
+    payload[n++] = (expiryTime & 0xFF000000) >> 24;
+    payload[n++] = (expiryTime & 0xFF0000) >> 16;
+    payload[n++] = (expiryTime & 0xFF00) >> 8;
+    payload[n++] = (expiryTime & 0xFF);
+    payload[n++] = (text.length() & 0xFF00) >> 8;
+    payload[n++] = (text.length() & 0xFF);
     if (text.length() > 0) {
-        for (n = 0; n < text.length(); ++n) {
-            payload[20 + n] = (uint8_t)text[n];
+        memcpy(payload + n, text.c_str(), text.length());
+        n += text.length();
+    }
+
+    if (keyType == KeyType::GMK || keyType == KeyType::MKFC || keyType == KeyType::MuSiK) {
+        payload[n++] = (MCGroupIDslen & 0xFF00) >> 8;
+        payload[n++] = (MCGroupIDslen & 0xFF);
+        payload[n++] = mcGroupIDsPayload.numberOfGroupIDs;
+
+        if (mcGroupIDsPayload.numberOfGroupIDs) {
+            payload[n++] = mcGroupIDsPayload.groupID.iei;
+            payload[n++] = (mcGroupIDsPayload.groupID.length & 0xFF00) >> 8;
+            payload[n++] = mcGroupIDsPayload.groupID.length & 0xFF;
+            for (uint16_t i = 0; i < mcGroupIDsPayload.groupID.length; ++i) {
+                payload[n++] = mcGroupIDsPayload.groupID.data[i];
+            }
         }
     }
 
-    payload[20 + n++] = (MCGroupIDslen & 0xFF00) >> 8;
-    payload[20 + n++] = (MCGroupIDslen & 0xFF);
-
-    payload[20 + n++] = mcGroupIDsPayload.numberOfGroupIDs;
-
-    n += 20;
-    if (mcGroupIDsPayload.numberOfGroupIDs) {
-        payload[n++] = mcGroupIDsPayload.groupID.iei;
-        payload[n++] = (mcGroupIDsPayload.groupID.length & 0xFF00) >> 8;
-        payload[n++] = mcGroupIDsPayload.groupID.length & 0xFF;
-        for (uint16_t i = 0; i < mcGroupIDsPayload.groupID.length; ++i) {
-            payload[n + i] = mcGroupIDsPayload.groupID.data[i];
-        }
+    if (size != n) {
+        MIKEY_SAKKE_LOGE("CAUTION: KeyParametersPayload memory usage is not expected (%dB allocated by %dB used)", size, n);
     }
-
     return payload;
 }
 
 std::string KeyParametersPayload::string() const {
     std::stringstream ss;
-    ss << "Keytype : " << static_cast<int>(keyType) << '\n';
-    ss << "keyStatus : " << keyStatus << '\n';
+    ss << "Keytype : ";
+    switch (keyType) {
+        case KeyParametersPayload::KeyType::GMK:
+            ss << "GMK";
+            break;
+        case KeyParametersPayload::KeyType::PCK:
+            ss << "PCK";
+            break;
+        case KeyParametersPayload::KeyType::CSK:
+            ss << "CSK";
+            break;
+        case KeyParametersPayload::KeyType::SPK:
+            ss << "SPK";
+            break;
+        case KeyParametersPayload::KeyType::MKFC:
+            ss << "MKFC";
+            break;
+        case KeyParametersPayload::KeyType::MSCCK:
+            ss << "MSCCK";
+            break;
+        case KeyParametersPayload::KeyType::MuSiK:
+            ss << "MuSiK";
+            break;
+        default:
+            ss << "UNKNOWN(" << static_cast<int>(keyType) << ")";
+    }
+    ss << "\n";
+    ss << "keyStatus (KeyNotRevoked) : " << keyStatusRevok << '\n';
+    ss << "keyStatus (Shared with S-Gateway) : " << keyStatusGateway << '\n';
     ss << "activationTime : " << activationTime << '\n';
     ss << "expiryTime : " << expiryTime << '\n';
-    ss << "text : " << text << std::endl;
+    ss << "GroupsIds (len="<< itoa(MCGroupIDslen) << "): {\n";
+    if (MCGroupIDslen > 0) {
+        ss << "\tNbGroup=" << itoa(mcGroupIDsPayload.numberOfGroupIDs) << '\n';
+        if (mcGroupIDsPayload.numberOfGroupIDs > 0) {
+            ss << "\tgroupID.iei=" << itoa(mcGroupIDsPayload.groupID.iei) << '\n';
+            ss << "\tGroupID(len="<< itoa(mcGroupIDsPayload.groupID.length)<< ")=" << OctetString{mcGroupIDsPayload.groupID.length, mcGroupIDsPayload.groupID.data}.translate() << '\n';
+        }
+    }
+    ss << "}" << std::endl;;
     return ss.str();
 }

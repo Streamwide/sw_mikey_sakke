@@ -40,9 +40,11 @@
 #define MIKEY_SRTP_EALG_NULL 0
 #define MIKEY_SRTP_EALG_AESCM 1
 #define MIKEY_SRTP_EALG_AESF8 2
+#define MIKEY_SRTP_EALG_AESGCM 6 // Addition by TS-33.180 E.2.2-1
 // SRTP authentication algorithms (RFC 3830)
 #define MIKEY_SRTP_AALG_NULL 0
 #define MIKEY_SRTP_AALG_SHA1HMAC 1
+#define MIKEY_SRTP_AALG_RCCM3 4 // Addition by TS-33.180 E.2.2-1
 // SRTP pseudo-random (RFC 3830)
 #define MIKEY_SRTP_PRF_AESCM 0
 // FEC order (RFC 3830)
@@ -61,6 +63,10 @@
 #define MIKEY_SRTP_AUTH_ON_OFF 10
 #define MIKEY_SRTP_AUTH_TAGL 11
 #define MIKEY_SRTP_PREFIX 12
+#define MIKEY_SRTP_ROC_TRANSMISSION_RATE 13 // Addition by TS-33.180 E.2.2-1
+#define MIKEY_SRTP_ROC_AUTH_TAGL 18 // Addition by TS-33.180 E.2.2-1
+#define MIKEY_SRTCP_AUTH_TAGL 19 // Addition by TS-33.180 E.2.2-1
+#define MIKEY_SRTP_AEAD_TAGL 20 // Addition by TS-33.180 E.2.2-1
 //
 // Constants for IPSEC
 //
@@ -135,6 +141,9 @@ class LIBMIKEY_API MikeyPayloadSP : public MikeyPayload {
     // Return number of policy param entries
     int         noOfPolicyParam();
     std::string debugDump() override;
+    std::string debugDumpProtType(uint8_t prot_type);
+    std::string debugDumpParamType(uint8_t param_type);
+    std::string debugDumpParamValue(uint8_t param_type, uint8_t value);
 
     uint8_t policy_no;
     uint8_t prot_type;
